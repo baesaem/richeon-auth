@@ -469,19 +469,20 @@
       ${num('maxCopies', '인증번호 발급 횟수', c.maxCopies, '이 횟수를 넘으면 관리자 재승인이 필요합니다.')}
       ${num('maxApprovals', '사용자당 총 승인 횟수', c.maxApprovals, '이 횟수를 넘으면 더 승인할 수 없습니다.')}
       <h3 style="margin:22px 0 4px;font-size:.98rem">알림 · 주소</h3>
-      <label class="f">관리자 알림 이메일</label><div class="row"><input class="input grow" id="cEmail" value="${esc(d.adminEmail)}" placeholder="비워 두면 알림 없음"><button class="btn sm" id="cEmailGo">저장</button><button class="btn sm" id="cEmailTest">테스트 발송</button></div>
+      <label class="f">관리자 알림 이메일</label><div class="row"><input class="input grow" id="cEmail" value="${esc(d.adminEmail)}" placeholder="비워 두면 알림 없음"><button class="btn sm" id="cEmailGo">저장</button>${String(d.serverVersion).startsWith('3') ? '' : '<button class="btn sm" id="cEmailTest">테스트 발송</button>'}</div>
       <p class="help">처음 쓸 때는 Apps Script 편집기에서 <code>authorizeEmailPermission</code> 함수를 한 번 실행해 메일 권한을 승인하세요.</p>
       <label class="f">인증 센터 주소(예전 링크·메일에서 안내할 주소)</label><div class="row"><input class="input grow" id="cSite" value="${esc(d.siteUrl)}"><button class="btn sm" id="cSiteGo">저장</button></div>
       <h3 style="margin:22px 0 4px;font-size:.98rem">관리자 계정</h3>
       <div class="row"><input class="input grow" id="pCur" type="password" placeholder="현재 비밀번호"><input class="input grow" id="pNew" type="password" placeholder="새 비밀번호(4자 이상)"><input class="input grow" id="pNew2" type="password" placeholder="새 비밀번호 확인"><button class="btn sm" id="pGo">비밀번호 변경</button></div>
       <p class="help">바꾸면 모든 기기에서 다시 로그인해야 합니다.</p>
       <div class="row" style="margin-top:8px"><input class="input grow" id="kNew" placeholder="새 관리자 주소 키(영문·숫자 8자 이상)"><button class="btn sm" id="kGo">주소 키 변경</button></div>
-      <h3 style="margin:22px 0 4px;font-size:.98rem">백업</h3>
+      ${d.backup && d.backup.note ? '<h3 style="margin:22px 0 4px;font-size:.98rem">백업</h3><p class="small muted">' + esc(d.backup.note) + ' · 데이터 시트의 <b>파일 → 버전 기록</b>으로도 언제든 되돌릴 수 있습니다.</p>' : ''}
+      <div style="${d.backup && d.backup.note ? 'display:none' : ''}">      <h3 style="margin:22px 0 4px;font-size:.98rem">백업</h3>
       <div class="row"><select class="input" style="width:auto" id="bInt">${[['off', '사용 안 함'], ['hourly', '매 시간'], ['daily', '매일 새벽 3시'], ['weekly', '매주 일요일'], ['monthly', '매월 1일']].map(([k, l]) => `<option value="${k}" ${d.backup.interval === k ? 'selected' : ''}>${l}</option>`).join('')}</select><button class="btn sm" id="bGo">저장</button><button class="btn sm" id="bNow">지금 백업</button><button class="ghost sm" id="bList">백업 목록</button><span class="tiny muted">${d.backup.lastBackupAt ? '마지막 백업 ' + fmtT(d.backup.lastBackupAt) : ''}${d.backup.interval !== 'off' && !d.backup.active ? ' · ⚠ 트리거가 없습니다. 편집기에서 setBackupInterval을 한 번 실행하세요.' : ''}</span></div>
-      <div id="bOut" class="small" style="margin-top:8px"></div>`
+      <div id="bOut" class="small" style="margin-top:8px"></div></div>`
     $('panel').querySelectorAll('[data-cfg]').forEach((b) => { b.onclick = () => act(b, () => admin('updateConfig', b.dataset.cfg, $(b.dataset.cfg).value), '저장했습니다.', P.cfg(b.dataset.cfg)) })
     $('cEmailGo').onclick = () => act($('cEmailGo'), () => admin('setAdminEmail', $('cEmail').value), '저장했습니다.')
-    $('cEmailTest').onclick = () => busy($('cEmailTest'), async () => { try { await admin('sendTestEmail', $('cEmail').value); toast('테스트 메일을 보냈습니다.', 'ok') } catch (e) { toast(e.message, 'err') } })
+    if ($('cEmailTest')) $('cEmailTest').onclick = () => busy($('cEmailTest'), async () => { try { await admin('sendTestEmail', $('cEmail').value); toast('테스트 메일을 보냈습니다.', 'ok') } catch (e) { toast(e.message, 'err') } })
     $('cSiteGo').onclick = () => act($('cSiteGo'), () => admin('setSiteUrl', $('cSite').value), '저장했습니다.')
     $('pGo').onclick = () => { if ($('pNew').value !== $('pNew2').value) return toast('새 비밀번호가 서로 다릅니다.', 'err'); busy($('pGo'), async () => { try { await admin('changeAdminPassword', $('pCur').value, $('pNew').value); toast('비밀번호를 바꿨습니다. 다시 로그인하세요.', 'ok'); state.token = null; ls.set(LS.token, null); renderLogin() } catch (e) { toast(e.message, 'err') } }) }
     $('kGo').onclick = () => busy($('kGo'), async () => { try { const r = await admin('changeAdminUrlKey', $('kNew').value.trim()); const url = location.origin + location.pathname + r.adminPath; modal(`<h3>관리자 주소가 바뀌었습니다</h3><p class="small muted">새 주소를 보관하세요. 예전 주소로는 들어올 수 없습니다.</p><div class="row"><input class="input grow" readonly value="${esc(url)}"><button class="btn sm" id="kCp">복사</button></div><div class="row" style="justify-content:flex-end;margin-top:14px"><a class="btn sm primary" href="${esc(url)}">새 주소로 이동</a></div>`); $('kCp').onclick = () => copyText(url).then(() => toast('복사했습니다.', 'ok')) } catch (e) { toast(e.message, 'err') } })
