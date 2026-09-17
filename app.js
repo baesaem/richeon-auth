@@ -79,8 +79,14 @@
   }
   window.addEventListener('hashchange', () => { parseRoute(); boot() })  // 관리자 키가 바뀔 수 있어 서버 확인부터 다시
 
+  // 세션 캐시: 마지막 화면 자료를 먼저 그려 주고(즉시), 서버 응답이 오면 바꿔 그린다 — Apps Script는 요청마다 2~5초 걸린다
+  const ss = { get: (k) => { try { return JSON.parse(sessionStorage.getItem(k) || 'null') } catch (_) { return null } }, set: (k, v) => { try { sessionStorage.setItem(k, JSON.stringify(v)) } catch (_) {} } }
+  function refreshing(on) { let el = $('refreshing'); if (!el) { el = document.createElement('div'); el.id = 'refreshing'; el.className = 'refreshing'; el.innerHTML = '<span class="spin"></span> 서버에서 새로 가져오는 중…'; document.body.appendChild(el) } el.classList.toggle('show', !!on) }
+
   async function boot() {
     parseRoute()
+    // 관리자 화면에 로그인 토큰이 있으면 bootInfo와 자료 요청을 동시에 보낸다(직렬로 기다리면 두 배 느림)
+    const adminAhead = state.route === 'admin' && state.token ? admin('getAdminData').then((d) => { state.admin = d; ss.set('admin_data', d) }, (e) => { state.adminErr = e }) : null
     try { state.boot = await call('bootInfo', [state.key]) }
     catch (e) {
       // 서버가 아직 예전 버전(v1)인지 구분: 예전 서버도 GET ?action= 에는 JSON으로 답한다
@@ -92,6 +98,7 @@
       $('app').innerHTML = `<div class="card"><div class="notice ${old ? 'warn' : 'danger'}">⚠ ${esc(msg)}<br><span class="tiny muted">서버 주소: ${esc(API)}</span></div>${old ? '<p class="small muted" style="margin:12px 0 0">관리자 안내: 앱인증/gas/설치안내.md — 배포 관리 → 기존 배포 편집 → 새 버전 → 배포 (주소는 그대로).</p>' : ''}</div>`
       return
     }
+    if (adminAhead) await adminAhead
     render()
   }
 
@@ -155,12 +162,17 @@
     else if (state.preApp && uid) loadUser()
   }
 
-  async function loadUser() {
-    const uid = $('uid').value.trim(); $('uidErr').textContent = ''
+  async function loadUser(quiet) {
+    const uid = ($('uid') ? $('uid').value : state.uid).trim(); if ($('uidErr')) $('uidErr').textContent = ''
     if (!uid) return ($('uidErr').textContent = '사용자 ID를 입력하세요.')
-    try { state.user = await call('getUserData', [uid]); state.uid = uid; ls.set(LS.uid, uid); renderUserBody() }
-    catch (e) { $('uidErr').textContent = e.message }
+    // 같은 ID의 지난 자료가 있으면 먼저 보여 주고, 서버 자료가 오면 바꿔 그린다
+    const cached = !quiet && ss.get('user_' + uid)
+    if (cached && !(state.user && state.user.userId === uid)) { state.user = cached; state.uid = uid; renderUserBody(); refreshing(true) }
+    try { const d = await call('getUserData', [uid]); state.user = d; state.uid = uid; ls.set(LS.uid, uid); ss.set('user_' + uid, d); refreshing(false); renderUserBody() }
+    catch (e) { refreshing(false); if ($('uidErr')) $('uidErr').textContent = e.message; else toast(e.message, 'err') }
   }
+  // 사용자 동작 뒤: 화면 자료를 바로 고쳐 그리고 서버 자료는 뒤에서 새로 고침
+  function userPatch(f) { try { f(state.user) } catch (_) {} renderUserBody(); refreshing(true); loadUser(true).catch(() => refreshing(false)) }
 
   function renderUserBody() {
     const u = state.user
@@ -186,7 +198,7 @@
     $('msgIn').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) $('msgGo').click() })
     $('msgGo').onclick = () => busy($('msgGo'), async () => {
       const m = $('msgIn').value.trim(); if (!m) return
-      try { await call('addMessage', [u.userId, m]); $('msgIn').value = ''; toast('보냈습니다.', 'ok'); await loadUser() } catch (e) { toast(e.message, 'err') }
+      try { const r = await call('addMessage', [u.userId, m]); toast('보냈습니다.', 'ok'); userPatch((d) => { d.messages.push({ id: r.id, userId: u.userId, message: m, createdAt: r.createdAt, isAdminReply: false }) }) } catch (e) { toast(e.message, 'err') }
     })
     document.querySelectorAll('[data-act]').forEach((b) => { b.onclick = () => userAction(b.dataset.act, b.dataset.app, b.dataset.dev, b) })
     if (preApp && regById[preApp] && regById[preApp].status === 'approved') userAction('code', preApp)
@@ -218,7 +230,7 @@
     if (act === 'register') return openRegister(appId)
     if (act === 'release') {
       if (!(await confirmBox('기기 해제', '이 기기에서는 앱이 다시 체험판으로 돌아가며, 다시 인증하면 다시 등록됩니다.', '해제', true))) return
-      try { await call('releaseUserDevice', [u.userId, devId]); toast('해제했습니다.', 'ok'); await loadUser() } catch (e) { toast(e.message, 'err') }
+      try { await call('releaseUserDevice', [u.userId, devId]); toast('해제했습니다.', 'ok'); userPatch((d) => { for (const r of d.registrations) r.devices = (r.devices || []).filter((x) => x.id !== devId) }) } catch (e) { toast(e.message, 'err') }
       return
     }
     if (act === 'code') {
@@ -255,8 +267,16 @@
     $('src').querySelectorAll('button').forEach((b) => { b.onclick = () => { src = b.dataset.v; $('src').querySelectorAll('button').forEach((x) => x.classList.toggle('active', x === b)) } })
     $('rCancel').onclick = closeModal
     $('rGo').onclick = () => busy($('rGo'), async () => {
-      try { await call('requestRegistration', [state.user.userId, appId, src, $('rName').value.trim(), $('rMsg').value.trim()]); closeModal(); toast('신청했습니다. 관리자 승인 후 인증번호를 받을 수 있습니다.', 'ok'); await loadUser() }
-      catch (e) { $('rErr').textContent = e.message }
+      const name = $('rName').value.trim(), msg = $('rMsg').value.trim()
+      try {
+        const r = await call('requestRegistration', [state.user.userId, appId, src, name, msg]); closeModal(); toast('신청했습니다. 관리자 승인 후 인증번호를 받을 수 있습니다.', 'ok')
+        userPatch((d) => {
+          const ex = d.registrations.find((x) => x.appId === appId)
+          const row = { id: r.id, appId, status: 'pending', copyCount: 0, totalApprovals: 0, createdAt: new Date().toISOString(), approvedAt: '', purchaseSource: src, maxDevices: 3, devices: [] }
+          if (ex) Object.assign(ex, row); else d.registrations.push(row)
+          if (msg) d.messages.push({ id: 'tmp', userId: d.userId, message: msg, createdAt: new Date().toISOString(), isAdminReply: false })
+        })
+      } catch (e) { $('rErr').textContent = e.message }
     })
   }
 
@@ -264,8 +284,13 @@
   function renderAdmin() {
     if (!state.boot.isAdminUrl) { $('app').innerHTML = `<div class="card" style="max-width:520px;margin:40px auto"><div class="notice danger">🔒 관리자 주소가 아닙니다. 설정할 때 받은 관리자 주소(키 포함)로 열어 주세요.</div></div>`; return }
     if (!state.token) return renderLogin()
-    $('app').innerHTML = `<div class="loading"><span class="spin"></span> 관리자 자료 불러오는 중…</div>`
-    loadAdmin().then(renderDash).catch((e) => { if (e.code === 'auth_required') { state.token = null; ls.set(LS.token, null); renderLogin('로그인이 만료되었습니다.') } else $('app').innerHTML = `<div class="card"><div class="notice danger">⚠ ${esc(e.message)}</div></div>` })
+    const fail = (e) => { if (e.code === 'auth_required') { state.token = null; ls.set(LS.token, null); renderLogin('로그인이 만료되었습니다.') } else $('app').innerHTML = `<div class="card"><div class="notice danger">⚠ ${esc(e.message)}</div></div>` }
+    if (state.adminErr) { const e = state.adminErr; state.adminErr = null; return fail(e) }
+    if (state.admin) return renderDash()           // boot()에서 미리 받아 둔 자료
+    const cached = ss.get('admin_data')
+    if (cached) { state.admin = cached; renderDash(); refreshing(true) }  // 지난 자료를 먼저 보여 주고 뒤에서 새로 고침
+    else $('app').innerHTML = `<div class="loading"><span class="spin"></span> 관리자 자료 불러오는 중… (보통 3~6초)</div>`
+    loadAdmin().then(() => { refreshing(false); renderDash() }).catch((e) => { refreshing(false); fail(e) })
   }
   function renderLogin(msg) {
     $('app').innerHTML = `<div class="card fade" style="max-width:440px;margin:40px auto"><h2>🔧 관리자 로그인</h2><p class="sub">리천 인증 센터 관리자</p>
@@ -279,7 +304,19 @@
       catch (e) { $('aErr').textContent = e.message }
     })
   }
-  async function loadAdmin() { state.admin = await admin('getAdminData'); return state.admin }
+  async function loadAdmin() { state.admin = await admin('getAdminData'); ss.set('admin_data', state.admin); return state.admin }
+  // 관리 동작: 서버 응답이 오면 화면 자료를 바로 고쳐 그리고(patch), 전체 자료는 뒤에서 조용히 새로 고친다
+  async function act(btn, fn, okMsg, patch) {
+    await busy(btn, async () => {
+      try {
+        const r = await fn()
+        if (okMsg) toast(okMsg, 'ok')
+        if (patch) { try { patch(r, state.admin) } catch (_) {} renderDash() }
+        refreshing(true)
+        loadAdmin().then(() => { refreshing(false); if (state.route === 'admin' && state.token) renderDash() }).catch(() => refreshing(false))
+      } catch (e) { toast(e.message, 'err') }
+    })
+  }
   const appName = (id) => { const a = (state.admin.apps || []).find((x) => x.appId === id); return a ? a.appName : id }
 
   function renderDash() {
@@ -306,8 +343,13 @@
     document.querySelectorAll('.tab').forEach((t) => { t.onclick = () => { state.tab = t.dataset.tab; renderDash() } })
     ;({ regs: panelRegs, apps: panelApps, devices: panelDevices, msgs: panelMsgs, settings: panelSettings })[state.tab]()
   }
-  async function act(btn, fn, okMsg) {
-    await busy(btn, async () => { try { await fn(); if (okMsg) toast(okMsg, 'ok'); await loadAdmin(); renderDash() } catch (e) { toast(e.message, 'err') } })
+  // 자료 즉시 반영용 도우미
+  const P = {
+    reg: (id, f) => (r, d) => { const x = d.registrations.find((z) => z.id === id); if (x) f(x, r) },
+    dropReg: (id) => (r, d) => { const x = d.registrations.find((z) => z.id === id); d.registrations = d.registrations.filter((z) => z.id !== id); if (x) d.devices = d.devices.filter((v) => !(v.appId === x.appId && v.userId === x.userId)); d.stats.total = d.registrations.length },
+    dropDevice: (id) => (r, d) => { d.devices = d.devices.filter((v) => v.id !== id); d.stats.devices = d.devices.length },
+    app: (id, f) => (r, d) => { const a = d.apps.find((z) => z.appId === id); if (a) f(a, r) },
+    cfg: (key) => (r, d) => { d.config[key] = r.value },
   }
 
   function panelRegs() {
@@ -334,15 +376,15 @@
     $('panel').querySelectorAll('[data-f]').forEach((b) => { b.onclick = () => { state.filter = b.dataset.f; panelRegs() } })
     $('appF').onchange = () => { state.appFilter = $('appF').value; panelRegs() }
     $('panel').querySelectorAll('[data-max]').forEach((inp) => {
-      const save = () => { const v = inp.value.trim(); const cur = (d.registrations.find((r) => r.id === inp.dataset.max) || {}).maxDevices || ''; if (v === String(cur)) return; act(null, () => admin('setRegistrationMaxDevices', inp.dataset.max, v), v ? `이 사용자는 기기 ${v}대로 설정했습니다.` : '전체 설정을 따르도록 되돌렸습니다.') }
+      const save = () => { const v = inp.value.trim(); const cur = (d.registrations.find((r) => r.id === inp.dataset.max) || {}).maxDevices || ''; if (v === String(cur)) return; act(null, () => admin('setRegistrationMaxDevices', inp.dataset.max, v), v ? `이 사용자는 기기 ${v}대로 설정했습니다.` : '전체 설정을 따르도록 되돌렸습니다.', P.reg(inp.dataset.max, (x, r) => { x.maxDevices = r.maxDevices })) }
       inp.onchange = save; inp.onkeydown = (e) => { if (e.key === 'Enter') inp.blur() }
     })
     $('panel').querySelectorAll('[data-a]').forEach((b) => {
       b.onclick = async () => {
         const id = b.dataset.id
-        if (b.dataset.a === 'approve') return act(b, () => admin('approveRegistration', id), '승인했습니다.')
-        if (b.dataset.a === 'revoke') { if (await confirmBox('등록 취소', '이 사용자의 앱은 모든 기기에서 체험판으로 돌아갑니다.', '취소하기', true)) act(b, () => admin('revokeRegistration', id), '취소했습니다.') }
-        if (b.dataset.a === 'del') { if (await confirmBox('등록 삭제', `<b>${esc(b.dataset.u)}</b> · ${esc(b.dataset.app)} 등록과 그 기기 기록을 지웁니다. 되돌릴 수 없습니다.`, '삭제', true)) act(b, () => admin('deleteRegistration', id), '삭제했습니다.') }
+        if (b.dataset.a === 'approve') return act(b, () => admin('approveRegistration', id), '승인했습니다.', P.reg(id, (x, r) => { x.status = 'approved'; x.copyCount = 0; x.totalApprovals = r.totalApprovals; x.approvedAt = new Date().toISOString() }))
+        if (b.dataset.a === 'revoke') { if (await confirmBox('등록 취소', '이 사용자의 앱은 모든 기기에서 체험판으로 돌아갑니다.', '취소하기', true)) act(b, () => admin('revokeRegistration', id), '취소했습니다.', P.reg(id, (x) => { x.status = 'revoked' })) }
+        if (b.dataset.a === 'del') { if (await confirmBox('등록 삭제', `<b>${esc(b.dataset.u)}</b> · ${esc(b.dataset.app)} 등록과 그 기기 기록을 지웁니다. 되돌릴 수 없습니다.`, '삭제', true)) act(b, () => admin('deleteRegistration', id), '삭제했습니다.', P.dropReg(id)) }
       }
     })
   }
@@ -361,8 +403,8 @@
       </tbody></table></div>`
     $('nGo').onclick = () => { const n = $('nName').value.trim(); if (!n) return toast('앱 이름을 입력하세요.', 'err'); act($('nGo'), async () => { const r = await admin('addApp', n, $('nDesc').value.trim(), $('nUrl').value.trim()); state.tab = 'apps'; setTimeout(() => openAppInfo(r.appId), 50) }, '앱을 추가했습니다.') }
     $('panel').querySelectorAll('[data-e]').forEach((b) => { b.onclick = () => openAppInfo(b.dataset.e) })
-    $('panel').querySelectorAll('[data-t]').forEach((b) => { b.onclick = () => { const a = d.apps.find((x) => x.appId === b.dataset.t); act(b, () => admin('updateApp', a.appId, null, null, !a.isActive, null)) } })
-    $('panel').querySelectorAll('[data-d]').forEach((b) => { b.onclick = async () => { if (await confirmBox('앱 삭제', '이 앱의 모든 등록과 기기 기록이 함께 지워집니다.', '삭제', true)) act(b, () => admin('deleteApp', b.dataset.d), '삭제했습니다.') } })
+    $('panel').querySelectorAll('[data-t]').forEach((b) => { b.onclick = () => { const a = d.apps.find((x) => x.appId === b.dataset.t); act(b, () => admin('updateApp', a.appId, null, null, !a.isActive, null), null, P.app(a.appId, (x) => { x.isActive = !x.isActive })) } })
+    $('panel').querySelectorAll('[data-d]').forEach((b) => { b.onclick = async () => { if (await confirmBox('앱 삭제', '이 앱의 모든 등록과 기기 기록이 함께 지워집니다.', '삭제', true)) act(b, () => admin('deleteApp', b.dataset.d), '삭제했습니다.', (r, dd) => { dd.apps = dd.apps.filter((x) => x.appId !== b.dataset.d); dd.registrations = dd.registrations.filter((x) => x.appId !== b.dataset.d) }) } })
     $('panel').querySelectorAll('[data-c]').forEach((b) => {
       b.onclick = () => busy(b, async () => {
         try { const r = await admin('generateAdminCode', b.dataset.c)
@@ -389,7 +431,7 @@
     $('eShow').onclick = () => { $('eSec').textContent = a.appSecret; $('eShow').remove() }
     $('modalBox').querySelectorAll('[data-cp]').forEach((x) => { x.onclick = () => copyText(x.dataset.cp).then(() => toast('복사했습니다.', 'ok')) })
     $('eCancel').onclick = closeModal
-    $('eSave').onclick = () => act($('eSave'), async () => { await admin('updateApp', a.appId, $('eName').value, $('eDesc').value, null, $('eUrl').value); closeModal() }, '저장했습니다.')
+    $('eSave').onclick = () => { const v = { appName: $('eName').value.trim(), description: $('eDesc').value.trim(), appUrl: $('eUrl').value.trim() }; act($('eSave'), async () => { await admin('updateApp', a.appId, v.appName, v.description, null, v.appUrl); closeModal() }, '저장했습니다.', P.app(a.appId, (x) => Object.assign(x, v))) }
   }
 
   function panelDevices() {
@@ -399,7 +441,7 @@
       <div class="tbl-wrap"><table class="tbl"><thead><tr><th>사용자 ID</th><th>앱</th><th>기기</th><th>환경</th><th>앱 버전</th><th>처음</th><th>마지막 사용</th><th></th></tr></thead><tbody>
       ${list.length ? list.map((x) => `<tr><td class="mono" style="font-weight:700">${esc(x.userId)}</td><td>${esc(appName(x.appId))}</td><td>${esc(x.deviceName || '이름 없음')} <span class="tiny muted mono">#${esc(x.deviceId.slice(-6))}</span></td><td class="small">${esc(x.platform)}</td><td class="tiny">${esc(x.appVersion)}</td><td class="tiny muted">${fmt(x.firstSeen)}</td><td class="tiny muted">${fmtT(x.lastSeen)}</td><td><button class="btn xs danger" data-r="${esc(x.id)}">해제</button></td></tr>`).join('') : '<tr><td colspan="8"><div class="empty">등록된 기기가 없습니다.</div></td></tr>'}
       </tbody></table></div>`
-    $('panel').querySelectorAll('[data-r]').forEach((b) => { b.onclick = async () => { if (await confirmBox('기기 해제', '이 기기의 앱은 체험판으로 돌아갑니다. 사용자가 다시 인증하면 다시 등록됩니다.', '해제', true)) act(b, () => admin('adminRemoveDevice', b.dataset.r), '해제했습니다.') } })
+    $('panel').querySelectorAll('[data-r]').forEach((b) => { b.onclick = async () => { if (await confirmBox('기기 해제', '이 기기의 앱은 체험판으로 돌아갑니다. 사용자가 다시 인증하면 다시 등록됩니다.', '해제', true)) act(b, () => admin('adminRemoveDevice', b.dataset.r), '해제했습니다.', P.dropDevice(b.dataset.r)) } })
   }
 
   function panelMsgs() {
@@ -413,8 +455,8 @@
         ${users.length ? users.map((u) => `<button class="btn full sm ${u === state.msgUser ? 'primary' : ''}" style="justify-content:space-between;margin-bottom:4px" data-u="${esc(u)}">${esc(u)}${d.unread.byUser[u] ? `<span class="cnt" style="background:var(--danger);color:#fff;border-radius:99px;padding:0 6px;font-size:.7rem">${d.unread.byUser[u]}</span>` : ''}</button>`).join('') : '<div class="empty" style="padding:10px">메시지가 없습니다.</div>'}</div>
       <div class="grow">${state.msgUser ? `<div class="thread" id="aThread">${threadHtml(byUser[state.msgUser])}</div><div class="row" style="margin-top:10px"><input class="input grow" id="aMsg" placeholder="${esc(state.msgUser)}에게 답장"><button class="btn primary" id="aMsgGo">보내기</button></div>` : ''}</div></div>`
     $('panel').querySelectorAll('[data-u]').forEach((b) => { b.onclick = () => { state.msgUser = b.dataset.u; panelMsgs() } })
-    if ($('mRead')) $('mRead').onclick = () => act($('mRead'), () => admin('markMessagesRead'))
-    if ($('aMsgGo')) { $('aMsg').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) $('aMsgGo').click() }); $('aMsgGo').onclick = () => { const m = $('aMsg').value.trim(); if (!m) return; act($('aMsgGo'), () => admin('addAdminReply', state.msgUser, m), '답장을 보냈습니다.') } }
+    if ($('mRead')) $('mRead').onclick = () => act($('mRead'), () => admin('markMessagesRead'), null, (r, dd) => { dd.unread = { count: 0, byUser: {}, lastReadAt: r.at } })
+    if ($('aMsgGo')) { $('aMsg').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) $('aMsgGo').click() }); $('aMsgGo').onclick = () => { const m = $('aMsg').value.trim(); if (!m) return; const to = state.msgUser; act($('aMsgGo'), () => admin('addAdminReply', to, m), '답장을 보냈습니다.', (r, dd) => { dd.messages.push({ id: r.id, userId: to, message: m, createdAt: r.createdAt, isAdminReply: true }) }) } }
     const t = $('aThread'); if (t) t.scrollTop = t.scrollHeight
   }
 
@@ -437,7 +479,7 @@
       <h3 style="margin:22px 0 4px;font-size:.98rem">백업</h3>
       <div class="row"><select class="input" style="width:auto" id="bInt">${[['off', '사용 안 함'], ['hourly', '매 시간'], ['daily', '매일 새벽 3시'], ['weekly', '매주 일요일'], ['monthly', '매월 1일']].map(([k, l]) => `<option value="${k}" ${d.backup.interval === k ? 'selected' : ''}>${l}</option>`).join('')}</select><button class="btn sm" id="bGo">저장</button><button class="btn sm" id="bNow">지금 백업</button><button class="ghost sm" id="bList">백업 목록</button><span class="tiny muted">${d.backup.lastBackupAt ? '마지막 백업 ' + fmtT(d.backup.lastBackupAt) : ''}${d.backup.interval !== 'off' && !d.backup.active ? ' · ⚠ 트리거가 없습니다. 편집기에서 setBackupInterval을 한 번 실행하세요.' : ''}</span></div>
       <div id="bOut" class="small" style="margin-top:8px"></div>`
-    $('panel').querySelectorAll('[data-cfg]').forEach((b) => { b.onclick = () => act(b, () => admin('updateConfig', b.dataset.cfg, $(b.dataset.cfg).value), '저장했습니다.') })
+    $('panel').querySelectorAll('[data-cfg]').forEach((b) => { b.onclick = () => act(b, () => admin('updateConfig', b.dataset.cfg, $(b.dataset.cfg).value), '저장했습니다.', P.cfg(b.dataset.cfg)) })
     $('cEmailGo').onclick = () => act($('cEmailGo'), () => admin('setAdminEmail', $('cEmail').value), '저장했습니다.')
     $('cEmailTest').onclick = () => busy($('cEmailTest'), async () => { try { await admin('sendTestEmail', $('cEmail').value); toast('테스트 메일을 보냈습니다.', 'ok') } catch (e) { toast(e.message, 'err') } })
     $('cSiteGo').onclick = () => act($('cSiteGo'), () => admin('setSiteUrl', $('cSite').value), '저장했습니다.')

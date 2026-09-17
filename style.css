@@ -178,3 +178,5 @@ details.adv summary { cursor: pointer; color: var(--text-2); font-size: .86rem; 
   .top { padding: 10px 14px; }
   .brand small { display: none; }
 }
+.refreshing { position: fixed; right: 16px; bottom: 16px; z-index: 30; display: none; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 10px; background: var(--bg-2); border: 1px solid var(--line); color: var(--text-3); font-size: .78rem; box-shadow: var(--shadow); }
+.refreshing.show { display: inline-flex; }
