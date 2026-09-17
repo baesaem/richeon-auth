@@ -181,18 +181,21 @@
     const others = u.apps.filter((a) => !regById[a.appId])
     const preApp = state.preApp; state.preApp = ''
     $('userBody').innerHTML = `
-      <section class="card fade" id="appsCard">
-        <div class="row between"><h2><span class="n">2</span>내 앱 <span class="chip">${esc(u.userId)}</span></h2><button class="ghost sm" id="reload">새로고침</button></div>
-        <p class="sub">앱마다 상태와 사용 중인 기기를 보여 줍니다. 승인된 앱은 [인증번호 받기]를 누르세요.</p>
-        ${regs.length ? `<div class="apps">${regs.map(appCard).join('')}</div>` : `<div class="empty">아직 등록한 앱이 없습니다. 아래에서 구입한 앱을 등록 신청하세요.</div>`}
-        ${others.length ? `<div style="margin-top:16px"><label class="f">다른 앱 등록 신청</label><div class="row"><select class="input grow" id="newApp">${others.map((a) => `<option value="${esc(a.appId)}" ${a.appId === preApp ? 'selected' : ''}>${esc(a.appName)}</option>`).join('')}</select><button class="btn" id="newAppGo">등록 신청</button></div></div>` : ''}
-      </section>
-      <section class="card fade" id="codeCard" class="hidden" style="display:none"></section>
+      ${others.length ? `<section class="card fade" id="registerCard">
+        <h2><span class="n">2</span>앱 등록 신청</h2><p class="sub">구입한 앱을 골라 등록 신청하세요. 관리자가 확인한 뒤 승인하면 아래 '내 앱'에서 인증번호를 받을 수 있습니다.</p>
+        <div><div class="row"><select class="input grow" id="newApp">${others.map((a) => `<option value="${esc(a.appId)}" ${a.appId === preApp ? 'selected' : ''}>${esc(a.appName)}</option>`).join('')}</select><button class="btn" id="newAppGo">등록 신청</button></div></div>
+      </section>` : ''}
       <section class="card fade">
-        <h2><span class="n">3</span>관리자에게 메시지</h2><p class="sub">입금 안내, 기기 추가 요청 등을 남기면 관리자가 답장합니다.</p>
+        <h2><span class="n">${others.length ? 3 : 2}</span>관리자에게 메시지</h2><p class="sub">입금 안내, 기기 추가 요청 등을 남기면 관리자가 답장합니다.</p>
         <div class="thread" id="thread">${threadHtml(u.messages)}</div>
         <div class="row" style="margin-top:10px"><input class="input grow" id="msgIn" placeholder="메시지 입력"><button class="btn" id="msgGo">보내기</button></div>
-      </section>`
+      </section>
+      <section class="card fade" id="appsCard">
+        <div class="row between"><h2><span class="n">${others.length ? 4 : 3}</span>내 앱 <span class="chip">${esc(u.userId)}</span></h2><button class="ghost sm" id="reload">새로고침</button></div>
+        <p class="sub">앱마다 상태와 사용 중인 기기를 보여 줍니다. 승인된 앱은 [인증번호 받기]를 누르세요.</p>
+        ${regs.length ? `<div class="apps">${regs.map(appCard).join('')}</div>` : `<div class="empty">아직 등록한 앱이 없습니다. 위의 '앱 등록 신청'에서 구입한 앱을 신청하세요.</div>`}
+      </section>
+      <section class="card fade" id="codeCard" style="display:none"></section>`
     $('reload').onclick = () => busy($('reload'), loadUser)
     if ($('newAppGo')) $('newAppGo').onclick = () => openRegister($('newApp').value)
     $('msgIn').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) $('msgGo').click() })
