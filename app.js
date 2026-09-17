@@ -82,7 +82,16 @@
   async function boot() {
     parseRoute()
     try { state.boot = await call('bootInfo', [state.key]) }
-    catch (e) { $('app').innerHTML = `<div class="card"><div class="notice danger">⚠ ${esc(e.message)}<br><span class="tiny muted">서버 주소: ${esc(API)}</span></div></div>`; return }
+    catch (e) {
+      // 서버가 아직 예전 버전(v1)인지 구분: 예전 서버도 GET ?action= 에는 JSON으로 답한다
+      let old = false
+      try { const r = await fetch(API + '?action=ping', { redirect: 'follow' }); const j = await r.json(); old = !j.version } catch (_) { old = false }
+      const msg = old
+        ? '인증 서버가 아직 새 버전으로 배포되지 않았습니다. 관리자가 Apps Script(Code.gs)를 새 버전으로 다시 배포해야 인증 센터를 쓸 수 있습니다. 기존 앱의 인증번호는 그대로 유효합니다.'
+        : e.message
+      $('app').innerHTML = `<div class="card"><div class="notice ${old ? 'warn' : 'danger'}">⚠ ${esc(msg)}<br><span class="tiny muted">서버 주소: ${esc(API)}</span></div>${old ? '<p class="small muted" style="margin:12px 0 0">관리자 안내: 앱인증/gas/설치안내.md — 배포 관리 → 기존 배포 편집 → 새 버전 → 배포 (주소는 그대로).</p>' : ''}</div>`
+      return
+    }
     render()
   }
 
