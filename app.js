@@ -177,9 +177,10 @@
 
   function renderUserBody() {
     const u = state.user
-    const regs = u.registrations
+    const newest = (a, b) => (b.createdAt || '').localeCompare(a.createdAt || '') // 최근 것이 위로
+    const regs = u.registrations.slice().sort(newest)
     const regById = Object.fromEntries(regs.map((r) => [r.appId, r]))
-    const others = u.apps.filter((a) => !regById[a.appId])
+    const others = u.apps.filter((a) => !regById[a.appId]).slice().sort(newest)
     const preApp = state.preApp; state.preApp = ''
     $('userBody').innerHTML = `
       ${others.length ? `<section class="card fade" id="registerCard">
@@ -407,10 +408,11 @@
 
   function panelApps() {
     const d = state.admin
+    const apps = d.apps.slice().sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')) // 최근 추가한 앱이 위로
     $('panel').innerHTML = `
       <div class="row" style="margin-bottom:14px"><input class="input grow" id="nName" placeholder="새 앱 이름 (예: 학사일정 편성 도우미)"><input class="input grow" id="nDesc" placeholder="설명(선택)"><input class="input grow" id="nUrl" placeholder="앱 주소(선택) https://…"><button class="btn primary" id="nGo">앱 추가</button></div>
       <div class="tbl-wrap"><table class="tbl"><thead><tr><th>앱</th><th>앱 ID</th><th>주소</th><th>상태</th><th>등록</th><th>기기</th><th>등록일</th><th></th></tr></thead><tbody>
-      ${d.apps.length ? d.apps.map((a) => `<tr>
+      ${apps.length ? apps.map((a) => `<tr>
         <td><b>${esc(a.appName)}</b>${a.description ? `<div class="tiny muted">${esc(a.description)}</div>` : ''}</td><td class="mono tiny">${esc(a.appId)}</td>
         <td class="tiny">${a.appUrl ? `<a href="${esc(a.appUrl)}" target="_blank" rel="noopener">열기 ↗</a>` : '—'}</td>
         <td>${a.isActive ? '<span class="badge approved">활성</span>' : '<span class="badge revoked">비활성</span>'}</td>
