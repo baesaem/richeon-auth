@@ -45,6 +45,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .top-right { display: flex; gap: 6px; align-items: center; }
 
 .wrap { position: relative; z-index: 1; max-width: 980px; margin: 0 auto; padding: 28px 18px 60px; }
+/* 관리자 화면은 표 칸이 많아 화면을 넓게 쓴다 */
+body.admin .wrap, body.admin .foot { max-width: 1560px; }
 .foot { position: relative; z-index: 1; max-width: 980px; margin: 0 auto; padding: 10px 18px 40px; font-size: .78rem; color: var(--text-3); display: flex; flex-direction: column; gap: 4px; }
 .loading { display: flex; gap: 10px; align-items: center; justify-content: center; padding: 60px; color: var(--text-3); }
 
@@ -140,7 +142,12 @@ textarea.input { height: auto; min-height: 72px; padding: 10px 14px; resize: ver
 .tbl th { text-align: left; font-size: .74rem; letter-spacing: .04em; color: var(--text-3); padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
 .tbl td { padding: 10px; border-bottom: 1px solid var(--line); vertical-align: middle; white-space: nowrap; }
 .tbl tr:hover td { background: color-mix(in srgb, var(--navy-soft) 45%, transparent); }
-.tbl-wrap { overflow-x: auto; margin: 0 -8px; padding: 0 8px; }
+.tbl-wrap { overflow-x: auto; overscroll-behavior-x: contain; margin: 0 -8px; padding: 0 8px; scrollbar-width: thin; }
+/* 표가 화면보다 넓어 가로로 밀리더라도 맨 오른쪽 단추 칸은 늘 보이게 붙여 둔다 */
+.tbl th:last-child, .tbl td:last-child { position: sticky; right: -8px; z-index: 1; background: var(--bg-2); }
+.tbl th:last-child { z-index: 2; }
+.tbl tr:hover td:last-child { background: color-mix(in srgb, var(--navy-soft) 45%, var(--bg-2)); }
+.tbl-wrap.scrolled .tbl th:last-child, .tbl-wrap.scrolled .tbl td:last-child { box-shadow: -10px 0 12px -10px rgba(14,26,51,.45); }
 .filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
 .seg { display: inline-flex; border: 1px solid var(--line-2); border-radius: 10px; overflow: hidden; }
 .seg button { height: 34px; padding: 0 12px; border: none; background: transparent; color: var(--text-2); font-weight: 600; font-size: .82rem; cursor: pointer; }

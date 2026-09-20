@@ -139,6 +139,7 @@
 
   // ── 사용자 화면 ───────────────────────────────────────────
   function renderUser() {
+    document.body.classList.remove('admin')
     const uid = state.uid || ls.get(LS.uid) || ''
     $('app').innerHTML = `
       <section class="card hero fade">
@@ -296,6 +297,7 @@
     loadAdmin().then(() => { refreshing(false); renderDash() }).catch((e) => { refreshing(false); fail(e) })
   }
   function renderLogin(msg) {
+    document.body.classList.remove('admin')
     $('app').innerHTML = `<div class="card fade" style="max-width:440px;margin:40px auto"><h2>🔧 관리자 로그인</h2><p class="sub">리천 인증 센터 관리자</p>
       ${msg ? `<div class="notice warn small">${esc(msg)}</div>` : ''}
       <label class="f">비밀번호</label><input class="input" id="aPwd" type="password" autocomplete="current-password">
@@ -323,6 +325,7 @@
   const appName = (id) => { const a = (state.admin.apps || []).find((x) => x.appId === id); return a ? a.appName : id }
 
   function renderDash() {
+    document.body.classList.add('admin') // 관리자 표가 넓어 화면을 넓게 쓴다
     const d = state.admin, s = d.stats
     $('app').innerHTML = `
       <div class="row between fade" style="margin-bottom:14px"><div><h1 style="margin:0;font-size:1.35rem">관리자 대시보드</h1><div class="tiny muted">서버 v${esc(d.serverVersion)} · ${d.spreadsheetUrl ? `<a href="${esc(d.spreadsheetUrl)}" target="_blank" rel="noopener">데이터 시트 열기 ↗</a>` : ''}</div></div>
@@ -345,7 +348,17 @@
     $('stUnread').onclick = () => { state.tab = 'msgs'; renderDash() }
     document.querySelectorAll('.tab').forEach((t) => { t.onclick = () => { state.tab = t.dataset.tab; renderDash() } })
     ;({ regs: panelRegs, apps: panelApps, devices: panelDevices, msgs: panelMsgs, settings: panelSettings })[state.tab]()
+    watchTables()
   }
+  // 표가 화면보다 넓어 가로로 밀려 있으면 오른쪽 단추 칸에 그림자를 준다(아직 더 있다는 표시)
+  function watchTables() {
+    document.querySelectorAll('.tbl-wrap').forEach((w) => {
+      const upd = () => w.classList.toggle('scrolled', w.scrollWidth - w.clientWidth - w.scrollLeft > 1)
+      w.onscroll = upd
+      upd()
+    })
+  }
+  window.addEventListener('resize', () => { if (document.body.classList.contains('admin')) watchTables() })
   // 자료 즉시 반영용 도우미
   const P = {
     reg: (id, f) => (r, d) => { const x = d.registrations.find((z) => z.id === id); if (x) f(x, r) },
