@@ -2,6 +2,6 @@
 // 시험할 때는 주소 뒤에 ?api=http://localhost:4180/exec 를 붙이면 그 주소를 쓴다(브라우저에 기억).
 window.RICHEON_AUTH = {
   api: 'https://richeon-auth-api.richeon.workers.dev/',
-  siteVersion: '2026.09.17',
+  siteVersion: '2026.09.22',
   contact: 'http://baesaem.kr',
 }

@@ -69,7 +69,7 @@
   $('footVer').textContent = `인증 센터 ${CFG.siteVersion || ''}` + (API !== CFG.api ? ' · 시험 서버' : '')
 
   // ── 상태 · 라우팅 ────────────────────────────────────────
-  const state = { route: 'user', key: '', token: ls.get(LS.token), uid: '', user: null, admin: null, tab: 'regs', filter: 'all', appFilter: 'all', msgUser: '' }
+  const state = { route: 'user', key: '', token: ls.get(LS.token), uid: '', user: null, admin: null, tab: 'regs', filter: 'all', appFilter: 'all', msgUser: '', guide: null, guideP: null }
   function parseRoute() {
     const h = location.hash.replace(/^#\/?/, '')
     const [path, q] = h.split('?')
@@ -81,6 +81,7 @@
 
   // 세션 캐시: 마지막 화면 자료를 먼저 그려 주고(즉시), 서버 응답이 오면 바꿔 그린다 — Apps Script는 요청마다 2~5초 걸린다
   const ss = { get: (k) => { try { return JSON.parse(sessionStorage.getItem(k) || 'null') } catch (_) { return null } }, set: (k, v) => { try { sessionStorage.setItem(k, JSON.stringify(v)) } catch (_) {} } }
+  state.guide = ss.get('apply_guide')  // 지난 안내글(없으면 null → 첫 화면에서 받아 옴)
   function refreshing(on) { let el = $('refreshing'); if (!el) { el = document.createElement('div'); el.id = 'refreshing'; el.className = 'refreshing'; el.innerHTML = '<span class="spin"></span> 서버에서 새로 가져오는 중…'; document.body.appendChild(el) } el.classList.toggle('show', !!on) }
 
   async function boot() {
@@ -145,22 +146,41 @@
       <section class="card hero fade">
         <h1>정식판 인증번호 발급</h1>
         <p>구입하신 리천 앱을 정식판으로 쓰려면 사용자 ID로 인증번호를 받아 앱에 입력하세요. 인증번호 하나로 <b>여러 기기</b>에서 쓸 수 있고, 사용 중인 기기는 여기서 확인·해제합니다.</p>
+        <div class="must-read" id="guideNote" ${state.guide === '' ? 'style="display:none"' : ''}><span class="grow">📢 인증번호를 신청하기 전에 <b>먼저 [📋 발급 신청 안내]를 꼭 읽어 보세요.</b></span><button class="btn sm gold" id="guideBtn">📋 발급 신청 안내 읽기</button></div>
         <div class="steps">
-          <div class="step"><b>STEP 1</b>사용자 ID 확인 → 앱 등록 신청(구입 정보)</div>
+          <div class="step"><b>STEP 1</b>사용자 ID 확인 → 앱 등록 신청(입금자 정보)</div>
           <div class="step"><b>STEP 2</b>관리자 승인 후 인증번호 받기</div>
           <div class="step"><b>STEP 3</b>앱의 [정식판으로 전환]에 ID와 번호 입력</div>
         </div>
       </section>
       <section class="card fade" id="idCard">
-        <h2><span class="n">1</span>사용자 ID</h2><p class="sub">구입할 때 쓴 사용자 ID(아이디)를 입력하세요. 처음이면 원하는 ID를 정해 입력하면 됩니다.</p>
+        <h2><span class="n">1</span>사용자 ID</h2><p class="sub">구입(입금자명)할 때 쓴 사용자 ID(아이디)를 입력하세요. 처음이면 원하는 ID를 정해 입력하면 됩니다.</p>
         <div class="row"><input class="input grow" id="uid" placeholder="예: hong123" value="${esc(uid)}" autocomplete="username"><button class="btn primary" id="uidGo">확인</button></div>
         <div class="field-err" id="uidErr"></div>
       </section>
       <div id="userBody"></div>`
     $('uid').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) $('uidGo').click() })
     $('uidGo').onclick = () => busy($('uidGo'), loadUser)
+    $('guideBtn').onclick = () => busy($('guideBtn'), async () => {
+      let t = state.guide
+      if (t == null) { try { t = await loadGuide() } catch (e) { return toast(e.message, 'err') } }
+      if (!t) return toast('등록된 발급 신청 안내가 없습니다.')
+      openGuide(t, $('newApp') ? () => openRegister($('newApp').value) : null)  // 앱 등록 신청 칸이 있으면 바로 신청으로
+    })
+    loadGuide().catch(() => {})  // 첫 화면에서 미리 받아 두기(지난 값이 있으면 그걸 먼저 씀)
     if (state.user && state.user.userId === uid) renderUserBody()
     else if (state.preApp && uid) loadUser()
+  }
+
+  // 발급 신청 안내글: 사용자 ID를 넣기 전에도 볼 수 있게 따로 받아 둔다(페이지당 한 번, 세션 캐시)
+  function loadGuide() {
+    if (!state.guideP) state.guideP = call('getApplyGuide').then((r) => setGuide(r.applyGuide), (e) => { state.guideP = null; if (/알 수 없는 요청/.test(e.message)) return setGuide(''); throw e })
+    return state.guideP
+  }
+  function setGuide(t) {
+    state.guide = String(t || ''); ss.set('apply_guide', state.guide)
+    const note = $('guideNote'); if (note) note.style.display = state.guide ? '' : 'none'
+    return state.guide
   }
 
   async function loadUser(quiet) {
@@ -182,9 +202,12 @@
     const regById = Object.fromEntries(regs.map((r) => [r.appId, r]))
     const others = u.apps.filter((a) => !regById[a.appId]).slice().sort(newest)
     const preApp = state.preApp; state.preApp = ''
+    if ('applyGuide' in u) setGuide(u.applyGuide)
+    const guide = state.guide || ''
     $('userBody').innerHTML = `
       ${others.length ? `<section class="card fade" id="registerCard">
-        <h2><span class="n">2</span>앱 등록 신청</h2><p class="sub">구입한 앱을 골라 등록 신청하세요. 관리자가 확인한 뒤 승인하면 아래 '내 앱'에서 인증번호를 받을 수 있습니다.</p>
+        <h2><span class="n">2</span>앱 등록 신청</h2>
+        <p class="sub">구입한 앱을 골라 등록 신청하세요.${guide ? ' 신청 전에 위의 <b>[📋 발급 신청 안내]</b>를 꼭 읽어 주세요.' : ''} 관리자가 확인한 뒤 승인하면 아래 '내 앱'에서 인증번호를 받을 수 있습니다.</p>
         <div><div class="row"><select class="input grow" id="newApp">${others.map((a) => `<option value="${esc(a.appId)}" ${a.appId === preApp ? 'selected' : ''}>${esc(a.appName)}</option>`).join('')}</select><button class="btn" id="newAppGo">등록 신청</button></div></div>
       </section>` : ''}
       <section class="card fade">
@@ -260,14 +283,32 @@
     renderUserBody(); if (shown) { $('codeCard').style.display = ''; $('codeCard').innerHTML = html; const b = $('cpCode'); if (b) b.onclick = () => copyText($('codeVal').textContent).then(() => toast('인증번호를 복사했습니다.', 'ok')) }
   }
 
+  // 발급 신청 안내글: 줄바꿈 그대로 보여 주고, **글자**는 강조, '계좌'·'은행'이 든 줄은 강조 + 그 줄의 계좌번호는 복사 단추로
+  const guideAccount = (t) => { for (const line of String(t || '').split('\n')) { if (!/계좌|은행/.test(line)) continue; const m = line.match(/\d{2,6}(?:-\d{2,6}){2,4}/); if (m) return m[0] } return '' }
+  const guideLine = (l) => { const h = esc(l).replace(/\*\*(.+?)\*\*/g, '<strong class="em">$1</strong>'); return /계좌|은행/.test(l) ? `<span class="acct">${h}</span>` : h }
+  const guideHtml = (t, compact) => `<div class="guide${compact ? ' compact' : ''}">${String(t || '').split('\n').map(guideLine).join('\n')}</div>`
+  const bindCopyAccount = (btn, text) => { if (btn) btn.onclick = () => copyText(guideAccount(text)).then(() => toast('계좌번호를 복사했습니다: ' + guideAccount(text), 'ok')) }
+  function openGuide(text, onApply) {
+    const acct = guideAccount(text)
+    modal(`<h3>📋 발급 신청 안내</h3>${guideHtml(text)}
+      <div class="row" style="justify-content:flex-end;margin-top:14px">${acct ? '<button class="btn sm" id="gCopy">계좌번호 복사</button>' : ''}<button class="btn sm" id="gClose">닫기</button>${onApply ? '<button class="btn sm primary" id="gApply">등록 신청하기</button>' : ''}</div>`)
+    bindCopyAccount($('gCopy'), text)
+    $('gClose').onclick = closeModal
+    if (onApply) $('gApply').onclick = () => { closeModal(); onApply() }
+  }
+
   function openRegister(appId) {
     const app = state.user.apps.find((a) => a.appId === appId) || { appName: appId }
-    modal(`<h3>등록 신청 — ${esc(app.appName)}</h3><p class="small muted" style="margin:0 0 6px">구입 정보를 입력하면 관리자가 확인한 뒤 승인합니다. 승인 후 인증번호를 받을 수 있습니다.</p>
+    const guide = state.guide != null ? state.guide : (state.user.applyGuide || '')
+    modal(`<h3>등록 신청 — ${esc(app.appName)}</h3>
+      ${guide ? `<div class="row between" style="margin-top:6px"><span class="tiny muted" style="font-weight:700">발급 신청 안내</span>${guideAccount(guide) ? '<button class="ghost xs" id="rCopy">계좌번호 복사</button>' : ''}</div>${guideHtml(guide, true)}` : ''}
+      <p class="small muted" style="margin:${guide ? '12px' : '0'} 0 6px">구입 정보를 입력하면 관리자가 확인한 뒤 승인합니다. 승인 후 인증번호를 받을 수 있습니다.</p>
       <label class="f">구입처</label><div class="seg" id="src"><button data-v="blog" class="active">블로그(무통장 입금)</button><button data-v="online">온라인 구매</button></div>
       <label class="f">입금자 명 / 온라인 아이디</label><input class="input" id="rName" placeholder="사용자 ID와 같으면 비워 두세요">
       <label class="f">메시지(선택)</label><textarea class="input" id="rMsg" placeholder="관리자에게 전할 말"></textarea>
       <div class="field-err" id="rErr"></div>
       <div class="row" style="justify-content:flex-end;margin-top:14px"><button class="btn sm" id="rCancel">취소</button><button class="btn sm primary" id="rGo">등록 신청</button></div>`)
+    bindCopyAccount($('rCopy'), guide)
     let src = 'blog'
     $('src').querySelectorAll('button').forEach((b) => { b.onclick = () => { src = b.dataset.v; $('src').querySelectorAll('button').forEach((x) => x.classList.toggle('active', x === b)) } })
     $('rCancel').onclick = closeModal
@@ -480,15 +521,22 @@
 
   function panelSettings() {
     const d = state.admin, c = d.config
-    const num = (id, label, val, help) => `<div class="row between" style="padding:10px 0;border-bottom:1px solid var(--line)"><div><b class="small">${label}</b><div class="tiny muted">${help}</div></div><div class="row"><input class="num" id="${id}" value="${val}"><button class="btn xs" data-cfg="${id}">저장</button></div></div>`
+    const mail = d.mail || { enabled: !String(d.serverVersion).startsWith('3'), note: '' }  // 예전 서버: Apps Script면 메일 가능
+    const hasGuide = 'applyGuide' in d
+    const num =(id, label, val, help) => `<div class="row between" style="padding:10px 0;border-bottom:1px solid var(--line)"><div><b class="small">${label}</b><div class="tiny muted">${help}</div></div><div class="row"><input class="num" id="${id}" value="${val}"><button class="btn xs" data-cfg="${id}">저장</button></div></div>`
     $('panel').innerHTML = `
       <h3 style="margin:0 0 4px;font-size:.98rem">기기 · 발급 한도</h3>
       ${num('maxDevices', '인증번호당 기기 수', c.maxDevices, '한 사용자가 같은 인증번호로 인증할 수 있는 기기 수. 사용자별 예외는 등록 관리에서.')}
       ${num('maxCopies', '인증번호 발급 횟수', c.maxCopies, '이 횟수를 넘으면 관리자 재승인이 필요합니다.')}
       ${num('maxApprovals', '사용자당 총 승인 횟수', c.maxApprovals, '이 횟수를 넘으면 더 승인할 수 없습니다.')}
+      ${hasGuide ? `<h3 style="margin:22px 0 4px;font-size:.98rem">발급 신청 안내글</h3>
+      <p class="help" style="margin:0 0 8px">사용자 화면의 <b>[📋 발급 신청 안내]</b> 단추와 등록 신청 창에 그대로 보입니다. 줄바꿈은 그대로 나오고, <b>**강조할 글**</b>처럼 별표 두 개로 감싸면 강조됩니다. '계좌'나 '은행'이 들어간 줄은 자동으로 강조되며 그 줄의 계좌번호는 사용자가 복사할 수 있습니다. 비우고 저장하면 안내를 숨깁니다.</p>
+      <textarea class="input" id="gText" rows="12" maxlength="5000" placeholder="예: 후원 금액, 입금자명 쓰는 법, 후원 계좌…">${esc(d.applyGuide || '')}</textarea>
+      <div class="row" style="margin-top:8px"><button class="btn sm primary" id="gGo">안내글 저장</button><button class="btn sm" id="gPrev">미리보기</button><span class="tiny muted right" id="gLen"></span></div>` : ''}
       <h3 style="margin:22px 0 4px;font-size:.98rem">알림 · 주소</h3>
-      <label class="f">관리자 알림 이메일</label><div class="row"><input class="input grow" id="cEmail" value="${esc(d.adminEmail)}" placeholder="비워 두면 알림 없음"><button class="btn sm" id="cEmailGo">저장</button>${String(d.serverVersion).startsWith('3') ? '' : '<button class="btn sm" id="cEmailTest">테스트 발송</button>'}</div>
-      <p class="help">처음 쓸 때는 Apps Script 편집기에서 <code>authorizeEmailPermission</code> 함수를 한 번 실행해 메일 권한을 승인하세요.</p>
+      <label class="f">관리자 알림 이메일</label><div class="row"><input class="input grow" id="cEmail" value="${esc(d.adminEmail)}" placeholder="비워 두면 알림 없음"><button class="btn sm" id="cEmailGo">저장</button>${mail.enabled ? '<button class="btn sm" id="cEmailTest">테스트 발송</button>' : ''}</div>
+      <p class="help">사용자가 인증번호 발급(앱 등록)을 신청하면 이 주소로 <b>발급 신청 안내 메일</b>(사용자 ID·앱·구입처·입금자·메시지와 관리자 화면 바로가기)을 보냅니다. 비워 두면 보내지 않습니다.${mail.enabled && mail.note ? ' ' + esc(mail.note) : ''}</p>
+      ${mail.enabled ? '' : `<div class="notice warn small" style="margin-top:8px">⚠ ${esc(mail.note || '이 서버는 아직 메일 발송이 연결되지 않았습니다.')}</div>`}
       <label class="f">인증 센터 주소(예전 링크·메일에서 안내할 주소)</label><div class="row"><input class="input grow" id="cSite" value="${esc(d.siteUrl)}"><button class="btn sm" id="cSiteGo">저장</button></div>
       <h3 style="margin:22px 0 4px;font-size:.98rem">관리자 계정</h3>
       <div class="row"><input class="input grow" id="pCur" type="password" placeholder="현재 비밀번호"><input class="input grow" id="pNew" type="password" placeholder="새 비밀번호(4자 이상)"><input class="input grow" id="pNew2" type="password" placeholder="새 비밀번호 확인"><button class="btn sm" id="pGo">비밀번호 변경</button></div>
@@ -499,7 +547,13 @@
       <div class="row"><select class="input" style="width:auto" id="bInt">${[['off', '사용 안 함'], ['hourly', '매 시간'], ['daily', '매일 새벽 3시'], ['weekly', '매주 일요일'], ['monthly', '매월 1일']].map(([k, l]) => `<option value="${k}" ${d.backup.interval === k ? 'selected' : ''}>${l}</option>`).join('')}</select><button class="btn sm" id="bGo">저장</button><button class="btn sm" id="bNow">지금 백업</button><button class="ghost sm" id="bList">백업 목록</button><span class="tiny muted">${d.backup.lastBackupAt ? '마지막 백업 ' + fmtT(d.backup.lastBackupAt) : ''}${d.backup.interval !== 'off' && !d.backup.active ? ' · ⚠ 트리거가 없습니다. 편집기에서 setBackupInterval을 한 번 실행하세요.' : ''}</span></div>
       <div id="bOut" class="small" style="margin-top:8px"></div></div>`
     $('panel').querySelectorAll('[data-cfg]').forEach((b) => { b.onclick = () => act(b, () => admin('updateConfig', b.dataset.cfg, $(b.dataset.cfg).value), '저장했습니다.', P.cfg(b.dataset.cfg)) })
-    $('cEmailGo').onclick = () => act($('cEmailGo'), () => admin('setAdminEmail', $('cEmail').value), '저장했습니다.')
+    if (hasGuide) {
+      const len = () => { $('gLen').textContent = `${$('gText').value.length.toLocaleString()} / 5,000자` }
+      len(); $('gText').oninput = len
+      $('gPrev').onclick = () => { const t = $('gText').value.trim(); if (!t) return toast('안내글이 비어 있어 사용자 화면에는 안내 단추가 보이지 않습니다.', 'err'); openGuide(t) }
+      $('gGo').onclick = () => act($('gGo'), () => admin('setApplyGuide', $('gText').value), $('gText').value.trim() ? '안내글을 저장했습니다.' : '안내글을 비웠습니다. 사용자 화면에 안내가 보이지 않습니다.', (r, dd) => { dd.applyGuide = r.applyGuide })
+    }
+    $('cEmailGo').onclick = () => act($('cEmailGo'), () => admin('setAdminEmail', $('cEmail').value), '저장했습니다.', (r, dd) => { dd.adminEmail = r.email })
     if ($('cEmailTest')) $('cEmailTest').onclick = () => busy($('cEmailTest'), async () => { try { await admin('sendTestEmail', $('cEmail').value); toast('테스트 메일을 보냈습니다.', 'ok') } catch (e) { toast(e.message, 'err') } })
     $('cSiteGo').onclick = () => act($('cSiteGo'), () => admin('setSiteUrl', $('cSite').value), '저장했습니다.')
     $('pGo').onclick = () => { if ($('pNew').value !== $('pNew2').value) return toast('새 비밀번호가 서로 다릅니다.', 'err'); busy($('pGo'), async () => { try { await admin('changeAdminPassword', $('pCur').value, $('pNew').value); toast('비밀번호를 바꿨습니다. 다시 로그인하세요.', 'ok'); state.token = null; ls.set(LS.token, null); renderLogin() } catch (e) { toast(e.message, 'err') } }) }

@@ -88,6 +88,9 @@ textarea.input { height: auto; min-height: 72px; padding: 10px 14px; resize: ver
 .hero .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 20px; }
 .hero .step { background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.14); border-radius: 12px; padding: 12px 14px; font-size: .84rem; }
 .hero .step b { display: block; color: var(--gold-2); font-size: .74rem; letter-spacing: .1em; margin-bottom: 4px; }
+/* 첫 화면 알림: 먼저 발급 신청 안내를 읽도록 (위쪽 금빛 장식보다 앞에 두어 단추가 눌리게) */
+.hero .must-read { position: relative; z-index: 1; display: flex; align-items: center; gap: 10px 14px; flex-wrap: wrap; margin-top: 16px; padding: 12px 14px 12px 16px; border-radius: 12px; background: rgba(212,177,90,.16); border: 1px solid rgba(212,177,90,.55); color: #fff; font-size: .92rem; word-break: keep-all; }
+.hero .must-read b { color: var(--gold-2); }
 .notice { display: flex; gap: 10px; padding: 12px 14px; border-radius: 12px; font-size: .86rem; border: 1px solid; align-items: flex-start; }
 .notice.info { background: var(--info-soft); border-color: color-mix(in srgb, var(--info) 30%, transparent); color: var(--text); }
 .notice.ok { background: var(--ok-soft); border-color: color-mix(in srgb, var(--ok) 35%, transparent); }
@@ -161,6 +164,11 @@ textarea.input { height: auto; min-height: 72px; padding: 10px 14px; resize: ver
 .kv { display: grid; grid-template-columns: 140px 1fr; gap: 6px 12px; font-size: .86rem; }
 .kv b { color: var(--text-2); font-weight: 600; }
 details.adv summary { cursor: pointer; color: var(--text-2); font-size: .86rem; font-weight: 600; }
+/* 발급 신청 안내글(관리자가 쓴 글 그대로, 줄바꿈 유지) */
+.guide { white-space: pre-wrap; word-break: keep-all; overflow-wrap: anywhere; font-size: .9rem; line-height: 1.75; padding: 14px 16px; margin-top: 8px; border-radius: 12px; background: var(--bg-3); border: 1px solid var(--line); color: var(--text); }
+.guide.compact { max-height: 190px; overflow-y: auto; font-size: .84rem; margin-top: 6px; }
+.guide .em { font-weight: 800; font-size: 1.04em; color: var(--text); background: var(--gold-soft); border-radius: 6px; padding: 2px 8px; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
+.guide .acct { display: inline-block; font-weight: 700; color: var(--text); background: var(--gold-soft); border: 1px solid color-mix(in srgb, var(--gold) 45%, transparent); border-radius: 6px; padding: 1px 7px; }
 .secret { display: flex; gap: 8px; align-items: center; }
 .secret code { flex: 1; padding: 8px 10px; border-radius: 8px; background: var(--bg-3); font-size: .78rem; word-break: break-all; }
 
