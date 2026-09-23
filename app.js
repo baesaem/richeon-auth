@@ -207,7 +207,7 @@
     // 2·3·4번 구역은 아래로 길게 늘어놓지 않고 탭으로 (앱 등록 신청 · 소유 앱 · 관리자에게 메시지)
     const tabs = []
     if (others.length) tabs.push(['register', '앱 등록 신청'])
-    tabs.push(['apps', '소유 앱'], ['msgs', '관리자에게 메시지'])
+    tabs.push(['apps', '소유 앱(인증된 기기관리)'], ['msgs', '관리자에게 메시지'])
     if (preApp) state.utab = regById[preApp] ? 'apps' : (others.length ? 'register' : 'apps')
     if (!tabs.some(([k]) => k === state.utab)) state.utab = regs.length || !others.length ? 'apps' : 'register'
     const panel = {
