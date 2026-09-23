@@ -136,6 +136,9 @@ textarea.input { height: auto; min-height: 72px; padding: 10px 14px; resize: ver
 .tab { height: 40px; padding: 0 14px; border: none; background: transparent; border-bottom: 2px solid transparent; color: var(--text-2); font-weight: 700; cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
 .tab.active { color: var(--navy); border-bottom-color: var(--navy); }
 .tab .cnt { background: var(--danger); color: #fff; font-size: .68rem; min-width: 18px; height: 18px; border-radius: 99px; display: inline-grid; place-items: center; padding: 0 5px; }
+/* 사용자 화면 탭(2·3·4)의 번호 */
+.tab .tn { width: 21px; height: 21px; border-radius: 7px; background: var(--bg-3); color: var(--text-3); display: inline-grid; place-items: center; font-size: .72rem; font-weight: 800; }
+.tab.active .tn { background: var(--navy-soft); color: var(--navy); }
 .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-bottom: 16px; }
 .stat { background: var(--bg-2); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
 .stat b { display: block; font-size: 1.5rem; letter-spacing: -.02em; }

@@ -69,7 +69,7 @@
   $('footVer').textContent = `인증 센터 ${CFG.siteVersion || ''}` + (API !== CFG.api ? ' · 시험 서버' : '')
 
   // ── 상태 · 라우팅 ────────────────────────────────────────
-  const state = { route: 'user', key: '', token: ls.get(LS.token), uid: '', user: null, admin: null, tab: 'regs', filter: 'all', appFilter: 'all', msgUser: '', guide: null, guideP: null }
+  const state = { route: 'user', key: '', token: ls.get(LS.token), uid: '', user: null, admin: null, tab: 'regs', filter: 'all', appFilter: 'all', msgUser: '', guide: null, guideP: null, utab: '' }
   function parseRoute() {
     const h = location.hash.replace(/^#\/?/, '')
     const [path, q] = h.split('?')
@@ -204,30 +204,37 @@
     const preApp = state.preApp; state.preApp = ''
     if ('applyGuide' in u) setGuide(u.applyGuide)
     const guide = state.guide || ''
-    $('userBody').innerHTML = `
-      ${others.length ? `<section class="card fade" id="registerCard">
-        <h2><span class="n">2</span>앱 등록 신청</h2>
-        <p class="sub">구입한 앱을 골라 등록 신청하세요.${guide ? ' 신청 전에 위의 <b>[📋 발급 신청 안내]</b>를 꼭 읽어 주세요.' : ''} 관리자가 확인한 뒤 승인하면 아래 '내 앱'에서 인증번호를 받을 수 있습니다.</p>
-        <div><div class="row"><select class="input grow" id="newApp">${others.map((a) => `<option value="${esc(a.appId)}" ${a.appId === preApp ? 'selected' : ''}>${esc(a.appName)}</option>`).join('')}</select><button class="btn" id="newAppGo">등록 신청</button></div></div>
-      </section>` : ''}
-      <section class="card fade">
-        <h2><span class="n">${others.length ? 3 : 2}</span>관리자에게 메시지</h2><p class="sub">입금 안내, 기기 추가 요청 등을 남기면 관리자가 답장합니다.</p>
+    // 2·3·4번 구역은 아래로 길게 늘어놓지 않고 탭으로 (앱 등록 신청 · 관리자에게 메시지 · 내 앱)
+    const tabs = []
+    if (others.length) tabs.push(['register', '앱 등록 신청'])
+    tabs.push(['msgs', '관리자에게 메시지'], ['apps', '내 앱'])
+    if (preApp) state.utab = regById[preApp] ? 'apps' : (others.length ? 'register' : 'apps')
+    if (!tabs.some(([k]) => k === state.utab)) state.utab = regs.length || !others.length ? 'apps' : 'register'
+    const panel = {
+      register: () => `<p class="sub">구입한 앱을 골라 등록 신청하세요.${guide ? ' 신청 전에 위의 <b>[📋 발급 신청 안내]</b>를 꼭 읽어 주세요.' : ''} 관리자가 확인한 뒤 승인하면 <b>내 앱</b> 탭에서 인증번호를 받을 수 있습니다.</p>
+        <div class="row"><select class="input grow" id="newApp">${others.map((a) => `<option value="${esc(a.appId)}" ${a.appId === preApp ? 'selected' : ''}>${esc(a.appName)}</option>`).join('')}</select><button class="btn primary" id="newAppGo">등록 신청</button></div>`,
+      msgs: () => `<p class="sub">입금 안내, 기기 추가 요청 등을 남기면 관리자가 답장합니다.</p>
         <div class="thread" id="thread">${threadHtml(u.messages)}</div>
-        <div class="row" style="margin-top:10px"><input class="input grow" id="msgIn" placeholder="메시지 입력"><button class="btn" id="msgGo">보내기</button></div>
-      </section>
-      <section class="card fade" id="appsCard">
-        <div class="row between"><h2><span class="n">${others.length ? 4 : 3}</span>내 앱 <span class="chip">${esc(u.userId)}</span></h2><button class="ghost sm" id="reload">새로고침</button></div>
-        <p class="sub">앱마다 상태와 사용 중인 기기를 보여 줍니다. 승인된 앱은 [인증번호 받기]를 누르세요.</p>
-        ${regs.length ? `<div class="apps">${regs.map(appCard).join('')}</div>` : `<div class="empty">아직 등록한 앱이 없습니다. 위의 '앱 등록 신청'에서 구입한 앱을 신청하세요.</div>`}
+        <div class="row" style="margin-top:10px"><input class="input grow" id="msgIn" placeholder="메시지 입력"><button class="btn" id="msgGo">보내기</button></div>`,
+      apps: () => `<div class="row between" style="flex-wrap:nowrap;align-items:flex-start;gap:10px"><p class="sub grow" style="margin:0 0 10px">앱마다 상태와 사용 중인 기기를 보여 줍니다. 승인된 앱은 [인증번호 받기]를 누르세요.</p><button class="ghost sm" id="reload" style="flex:none">새로고침</button></div>
+        ${regs.length ? `<div class="apps">${regs.map(appCard).join('')}</div>` : `<div class="empty">아직 등록한 앱이 없습니다. ${others.length ? "<b>앱 등록 신청</b> 탭에서 구입한 앱을 신청하세요." : '신청할 수 있는 앱이 없습니다.'}</div>`}`,
+    }
+    $('userBody').innerHTML = `
+      <section class="card fade" id="userTabs">
+        <div class="tabs">${tabs.map(([k, l], i) => `<button class="tab ${state.utab === k ? 'active' : ''}" data-utab="${k}"><span class="tn">${i + 2}</span>${l}${k === 'apps' ? ` <span class="chip">${esc(u.userId)}</span>` : ''}</button>`).join('')}</div>
+        <div id="upanel">${panel[state.utab]()}</div>
       </section>
       <section class="card fade" id="codeCard" style="display:none"></section>`
-    $('reload').onclick = () => busy($('reload'), loadUser)
+    document.querySelectorAll('[data-utab]').forEach((b) => { b.onclick = () => { state.utab = b.dataset.utab; renderCounts() } })  // 인증번호 카드는 그대로 두고 다시 그림
+    if ($('reload')) $('reload').onclick = () => busy($('reload'), loadUser)
     if ($('newAppGo')) $('newAppGo').onclick = () => openRegister($('newApp').value)
-    $('msgIn').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) $('msgGo').click() })
-    $('msgGo').onclick = () => busy($('msgGo'), async () => {
-      const m = $('msgIn').value.trim(); if (!m) return
-      try { const r = await call('addMessage', [u.userId, m]); toast('보냈습니다.', 'ok'); userPatch((d) => { d.messages.push({ id: r.id, userId: u.userId, message: m, createdAt: r.createdAt, isAdminReply: false }) }) } catch (e) { toast(e.message, 'err') }
-    })
+    if ($('msgGo')) {
+      $('msgIn').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) $('msgGo').click() })
+      $('msgGo').onclick = () => busy($('msgGo'), async () => {
+        const m = $('msgIn').value.trim(); if (!m) return
+        try { const r = await call('addMessage', [u.userId, m]); toast('보냈습니다.', 'ok'); userPatch((d) => { d.messages.push({ id: r.id, userId: u.userId, message: m, createdAt: r.createdAt, isAdminReply: false }) }) } catch (e) { toast(e.message, 'err') }
+      })
+    }
     document.querySelectorAll('[data-act]').forEach((b) => { b.onclick = () => userAction(b.dataset.act, b.dataset.app, b.dataset.dev, b) })
     if (preApp && regById[preApp] && regById[preApp].status === 'approved') userAction('code', preApp)
     const t = $('thread'); if (t) t.scrollTop = t.scrollHeight
@@ -316,6 +323,7 @@
       const name = $('rName').value.trim(), msg = $('rMsg').value.trim()
       try {
         const r = await call('requestRegistration', [state.user.userId, appId, src, name, msg]); closeModal(); toast('신청했습니다. 관리자 승인 후 인증번호를 받을 수 있습니다.', 'ok')
+        state.utab = 'apps'  // 신청한 앱의 상태를 바로 볼 수 있게 '내 앱' 탭으로
         userPatch((d) => {
           const ex = d.registrations.find((x) => x.appId === appId)
           const row = { id: r.id, appId, status: 'pending', copyCount: 0, totalApprovals: 0, createdAt: new Date().toISOString(), approvedAt: '', purchaseSource: src, maxDevices: 3, devices: [] }
