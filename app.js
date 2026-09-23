@@ -84,7 +84,7 @@
   $('footVer').textContent = `인증 센터 ${CFG.siteVersion || ''}` + (API !== CFG.api ? ' · 시험 서버' : '')
 
   // ── 상태 · 라우팅 ────────────────────────────────────────
-  const state = { route: 'user', key: '', token: ls.get(LS.token), uid: '', user: null, admin: null, tab: 'regs', filter: 'all', appFilter: 'all', msgUser: '', guide: null, guideP: null, utab: '', pw: null, userQ: '' }
+  const state = { route: 'user', key: '', token: ls.get(LS.token), uid: '', user: null, admin: null, tab: 'regs', filter: 'all', appFilter: 'all', msgUser: '', guide: null, guideP: null, utab: '', pw: null, userQ: '', appQ: '', devQ: '' }
   function parseRoute() {
     const h = location.hash.replace(/^#\/?/, '')
     const [path, q] = h.split('?')
@@ -628,8 +628,14 @@
 
   function panelApps() {
     const d = state.admin
-    const apps = d.apps.slice().sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')) // 최근 추가한 앱이 위로
+    const all = d.apps.slice().sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')) // 최근 추가한 앱이 위로
+    const q = (state.appQ || '').trim().toLowerCase()
+    const apps = q ? all.filter((a) => [a.appName, a.description, a.appId].some((x) => String(x || '').toLowerCase().includes(q))) : all
     $('panel').innerHTML = `
+      <div class="row" style="margin-bottom:12px"><input class="input grow" id="appQ" list="appNames" placeholder="앱 검색 (이름 일부만 입력해도 됩니다)" value="${esc(state.appQ || '')}" autocomplete="off" style="max-width:360px">
+        <datalist id="appNames">${all.map((a) => `<option value="${esc(a.appName)}"></option>`).join('')}</datalist>
+        ${q ? '<button class="ghost sm" id="appQClear">지우기</button>' : ''}
+        <span class="tiny muted right">${q ? `${apps.length}개 찾음 / 전체 ${all.length}개` : `전체 ${all.length}개`}</span></div>
       <div class="row" style="margin-bottom:14px"><input class="input grow" id="nName" placeholder="새 앱 이름 (예: 학사일정 편성 도우미)"><input class="input grow" id="nDesc" placeholder="설명(선택)"><input class="input grow" id="nUrl" placeholder="앱 주소(선택) https://…"><button class="btn primary" id="nGo">앱 추가</button></div>
       <div class="tbl-wrap"><table class="tbl"><thead><tr><th>앱</th><th>앱 ID</th><th>주소</th><th>상태</th><th>등록</th><th>기기</th><th>등록일</th><th></th></tr></thead><tbody>
       ${apps.length ? apps.map((a) => `<tr>
@@ -637,9 +643,12 @@
         <td class="tiny">${a.appUrl ? `<a href="${esc(a.appUrl)}" target="_blank" rel="noopener">열기 ↗</a>` : '—'}</td>
         <td>${a.isActive ? '<span class="badge approved">활성</span>' : '<span class="badge revoked">비활성</span>'}</td>
         <td>${d.registrations.filter((r) => r.appId === a.appId).length}</td><td>${d.devices.filter((x) => x.appId === a.appId).length}</td><td class="tiny muted">${fmt(a.createdAt)}</td>
-        <td><div class="row" style="gap:4px;flex-wrap:nowrap"><button class="btn xs" data-e="${esc(a.appId)}">정보·키</button><button class="btn xs" data-c="${esc(a.appId)}" title="관리자용 만능 인증번호">🔑</button><button class="btn xs" data-t="${esc(a.appId)}">${a.isActive ? '비활성화' : '활성화'}</button>${!a.isActive ? `<button class="btn xs danger" data-d="${esc(a.appId)}">삭제</button>` : ''}</div></td></tr>`).join('') : '<tr><td colspan="8"><div class="empty">등록된 앱이 없습니다.</div></td></tr>'}
+        <td><div class="row" style="gap:4px;flex-wrap:nowrap"><button class="btn xs" data-e="${esc(a.appId)}">정보·키</button><button class="btn xs" data-c="${esc(a.appId)}" title="관리자용 만능 인증번호">🔑</button><button class="btn xs" data-t="${esc(a.appId)}">${a.isActive ? '비활성화' : '활성화'}</button>${!a.isActive ? `<button class="btn xs danger" data-d="${esc(a.appId)}">삭제</button>` : ''}</div></td></tr>`).join('') : `<tr><td colspan="8"><div class="empty">${q ? `'${esc(state.appQ)}'에 맞는 앱이 없습니다.` : '등록된 앱이 없습니다.'}</div></td></tr>`}
       </tbody></table></div>`
-    $('nGo').onclick = () => { const n = $('nName').value.trim(); if (!n) return toast('앱 이름을 입력하세요.', 'err'); act($('nGo'), async () => { const r = await admin('addApp', n, $('nDesc').value.trim(), $('nUrl').value.trim()); state.tab = 'apps'; setTimeout(() => openAppInfo(r.appId), 50) }, '앱을 추가했습니다.') }
+    const aq = $('appQ')
+    aq.oninput = () => { state.appQ = aq.value; const at = aq.selectionStart; panelApps(); const n = $('appQ'); n.focus(); try { n.setSelectionRange(at, at) } catch (_) {} }
+    if ($('appQClear')) $('appQClear').onclick = () => { state.appQ = ''; panelApps(); $('appQ').focus() }
+    $('nGo').onclick =() => { const n = $('nName').value.trim(); if (!n) return toast('앱 이름을 입력하세요.', 'err'); act($('nGo'), async () => { const r = await admin('addApp', n, $('nDesc').value.trim(), $('nUrl').value.trim()); state.tab = 'apps'; setTimeout(() => openAppInfo(r.appId), 50) }, '앱을 추가했습니다.') }
     $('panel').querySelectorAll('[data-e]').forEach((b) => { b.onclick = () => openAppInfo(b.dataset.e) })
     $('panel').querySelectorAll('[data-t]').forEach((b) => { b.onclick = () => { const a = d.apps.find((x) => x.appId === b.dataset.t); act(b, () => admin('updateApp', a.appId, null, null, !a.isActive, null), null, P.app(a.appId, (x) => { x.isActive = !x.isActive })) } })
     $('panel').querySelectorAll('[data-d]').forEach((b) => { b.onclick = async () => { if (await confirmBox('앱 삭제', '이 앱의 모든 등록과 기기 기록이 함께 지워집니다.', '삭제', true)) act(b, () => admin('deleteApp', b.dataset.d), '삭제했습니다.', (r, dd) => { dd.apps = dd.apps.filter((x) => x.appId !== b.dataset.d); dd.registrations = dd.registrations.filter((x) => x.appId !== b.dataset.d) }) } })
@@ -674,11 +683,21 @@
 
   function panelDevices() {
     const d = state.admin
-    const list = d.devices.slice().sort((a, b) => (b.lastSeen || '').localeCompare(a.lastSeen || ''))
+    const all = d.devices.slice().sort((a, b) => (b.lastSeen || '').localeCompare(a.lastSeen || ''))
+    const q = (state.devQ || '').trim().toLowerCase()
+    const list = q ? all.filter((x) => [x.userId, appName(x.appId), x.deviceName, x.platform].some((v) => String(v || '').toLowerCase().includes(q))) : all
+    const ids = [...new Set(all.map((x) => x.userId))].sort()
     $('panel').innerHTML = `<p class="small muted" style="margin:0 0 12px">앱에서 인증한 기기입니다. 기본 한도는 인증번호당 <b>${d.config.maxDevices}대</b>(설정에서 변경)이고, 사용자별 예외는 등록 관리의 기기 칸에서 정합니다.</p>
+      <div class="row" style="margin-bottom:12px"><input class="input grow" id="devQ" list="devUserIds" placeholder="사용자 ID·앱·기기 이름으로 검색" value="${esc(state.devQ || '')}" autocomplete="off" style="max-width:360px">
+        <datalist id="devUserIds">${ids.map((u) => `<option value="${esc(u)}"></option>`).join('')}</datalist>
+        ${q ? '<button class="ghost sm" id="devQClear">지우기</button>' : ''}
+        <span class="tiny muted right">${q ? `${list.length}대 찾음 / 전체 ${all.length}대` : `전체 ${all.length}대`}</span></div>
       <div class="tbl-wrap"><table class="tbl"><thead><tr><th>사용자 ID</th><th>앱</th><th>기기</th><th>환경</th><th>앱 버전</th><th>처음</th><th>마지막 사용</th><th></th></tr></thead><tbody>
-      ${list.length ? list.map((x) => `<tr><td class="mono" style="font-weight:700">${esc(x.userId)}</td><td>${esc(appName(x.appId))}</td><td>${esc(x.deviceName || '이름 없음')} <span class="tiny muted mono">#${esc(x.deviceId.slice(-6))}</span></td><td class="small">${esc(x.platform)}</td><td class="tiny">${esc(x.appVersion)}</td><td class="tiny muted">${fmt(x.firstSeen)}</td><td class="tiny muted">${fmtT(x.lastSeen)}</td><td><button class="btn xs danger" data-r="${esc(x.id)}">해제</button></td></tr>`).join('') : '<tr><td colspan="8"><div class="empty">등록된 기기가 없습니다.</div></td></tr>'}
+      ${list.length ? list.map((x) => `<tr><td class="mono" style="font-weight:700">${esc(x.userId)}</td><td>${esc(appName(x.appId))}</td><td>${esc(x.deviceName || '이름 없음')} <span class="tiny muted mono">#${esc(x.deviceId.slice(-6))}</span></td><td class="small">${esc(x.platform)}</td><td class="tiny">${esc(x.appVersion)}</td><td class="tiny muted">${fmt(x.firstSeen)}</td><td class="tiny muted">${fmtT(x.lastSeen)}</td><td><button class="btn xs danger" data-r="${esc(x.id)}">해제</button></td></tr>`).join('') : `<tr><td colspan="8"><div class="empty">${q ? `'${esc(state.devQ)}'에 맞는 기기가 없습니다.` : '등록된 기기가 없습니다.'}</div></td></tr>`}
       </tbody></table></div>`
+    const dq = $('devQ')
+    dq.oninput = () => { state.devQ = dq.value; const at = dq.selectionStart; panelDevices(); const n = $('devQ'); n.focus(); try { n.setSelectionRange(at, at) } catch (_) {} }
+    if ($('devQClear')) $('devQClear').onclick = () => { state.devQ = ''; panelDevices(); $('devQ').focus() }
     $('panel').querySelectorAll('[data-r]').forEach((b) => { b.onclick = async () => { if (await confirmBox('기기 해제', '이 기기의 앱은 체험판으로 돌아갑니다. 사용자가 다시 인증하면 다시 등록됩니다.', '해제', true)) act(b, () => admin('adminRemoveDevice', b.dataset.r), '해제했습니다.', P.dropDevice(b.dataset.r)) } })
   }
 
