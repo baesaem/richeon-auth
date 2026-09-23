@@ -9,7 +9,7 @@
   const STATUS = { approved: '승인됨', pending: '승인 대기', needs_reapproval: '재승인 필요', revoked: '취소됨', none: '미등록' }
   const badge = (s) => `<span class="badge ${esc(s || 'none')}">${esc(STATUS[s] || s || '미등록')}</span>`
   const SRC = { blog: '블로그(무통장)', online: '온라인', admin: '관리자' }
-  const LS = { theme: 'richeon_auth_theme', api: 'richeon_auth_api', token: 'richeon_auth_admin_token', uid: 'richeon_auth_last_uid', pw: 'richeon_auth_pw' }
+  const LS = { theme: 'richeon_auth_theme', api: 'richeon_auth_api', token: 'richeon_auth_admin_token', uid: 'richeon_auth_last_uid', pw: 'richeon_auth_pw', pwKeep: 'richeon_auth_pw_keep' }
   const ls = { get: (k) => { try { return localStorage.getItem(k) } catch (_) { return null } }, set: (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v) } catch (_) {} } }
 
   // ── API ───────────────────────────────────────────────────
@@ -142,6 +142,7 @@
   function renderUser() {
     document.body.classList.remove('admin')
     const uid = state.uid || ls.get(LS.uid) || ''
+    const savedPw = (uid && pwFor(uid)) || ''   // 이 브라우저에 기억해 둔 비밀번호가 있으면 미리 채운다
     $('app').innerHTML = `
       <section class="card hero fade">
         <h1>정식판 인증번호 발급</h1>
@@ -155,12 +156,45 @@
       </section>
       <section class="card fade" id="idCard">
         <h2><span class="n">1</span>사용자 ID</h2><p class="sub">구입(입금자명)할 때 쓴 사용자 ID(아이디)를 입력하세요. 처음이면 비번 입력(6자리 이상) 정해 입력하세요.</p>
-        <div class="row"><input class="input grow" id="uid" placeholder="예: hong123" value="${esc(uid)}" autocomplete="username"><button class="btn primary" id="uidGo">확인</button></div>
+        <div class="row">
+          <input class="input grow" id="uid" placeholder="예: hong123" value="${esc(uid)}" autocomplete="username">
+          <input class="input" id="pwField" type="password" maxlength="12" placeholder="비밀번호" value="${esc(savedPw)}" style="width:200px;flex:none" autocomplete="current-password">
+          <button class="btn" id="pwMake" style="display:none">🔒 비번 생성</button>
+          <button class="btn primary" id="uidGo">확인</button>
+        </div>
+        <div class="row between" style="margin-top:8px">
+          <label class="row small" style="gap:6px"><input type="checkbox" id="pwKeepMain" ${ls.get(LS.pwKeep) === '0' ? '' : 'checked'}> 이 브라우저에서 비번 유지</label>
+          <button class="ghost sm" id="pwForgotMain">비번을 잊으셨나요?</button>
+        </div>
         <div class="field-err" id="uidErr"></div>
       </section>
       <div id="userBody"></div>`
     $('uid').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) $('uidGo').click() })
-    $('uidGo').onclick = () => busy($('uidGo'), loadUser)
+    $('pwField').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) $('uidGo').click() })
+    // 아이디를 바꾸면 그 아이디에 비밀번호가 있는지 확인해 [비번 생성] 단추 ↔ 비밀번호 칸을 바꾼다
+    let statusT
+    $('uid').addEventListener('input', () => { clearTimeout(statusT); statusT = setTimeout(() => idStatus($('uid').value.trim()).then(updatePwUi), 500) })
+    $('uid').addEventListener('blur', () => idStatus($('uid').value.trim()).then(updatePwUi))
+    $('pwKeepMain').onchange = () => { ls.set(LS.pwKeep, $('pwKeepMain').checked ? '1' : '0'); if (!$('pwKeepMain').checked && state.pwUid) savePw(state.pwUid, state.pw, false) }
+    $('pwMake').onclick = () => busy($('pwMake'), async () => {
+      const id = $('uid').value.trim(); if (!id) return ($('uidErr').textContent = '사용자 ID를 먼저 입력하세요.')
+      if (await askNewPassword(id)) await loadUser()
+    })
+    $('pwForgotMain').onclick = () => { const id = $('uid').value.trim(); if (!id) return ($('uidErr').textContent = '사용자 ID를 먼저 입력하세요.'); openPwReset(id) }
+    $('uidGo').onclick = () => busy($('uidGo'), async () => {
+      const id = $('uid').value.trim(); $('uidErr').textContent = ''
+      if (!id) return ($('uidErr').textContent = '사용자 ID를 입력하세요.')
+      const st = await idStatus(id); updatePwUi()
+      if (st && st.hasPassword === false) {   // 비밀번호가 없는 아이디 — 먼저 만든다
+        if (!(await askNewPassword(id))) return ($('uidErr').textContent = '비밀번호를 정해야 내 정보를 볼 수 있습니다.')
+        return loadUser()
+      }
+      const v = $('pwField').value.trim()
+      if (!v) { $('pwField').focus(); return ($('uidErr').textContent = '비밀번호를 입력하세요.') }
+      state.pw = v; state.pwUid = id; savePw(id, v, $('pwKeepMain').checked)
+      await loadUser()
+    })
+    idStatus(uid).then(updatePwUi)
     $('guideBtn').onclick = () => busy($('guideBtn'), async () => {
       let t = state.guide
       if (t == null) { try { t = await loadGuide() } catch (e) { return toast(e.message, 'err') } }
@@ -205,30 +239,28 @@
         $('pwErr').textContent = ''
         if (a.length < 6 || a.length > 12) return ($('pwErr').textContent = '비밀번호는 6~12자리로 정하세요.')
         if (a !== b) return ($('pwErr').textContent = '두 번 입력한 비밀번호가 다릅니다.')
-        try { await call('setUserPassword', [uid, a]); state.pw = a; savePw(uid, a, $('pwKeep').checked); toast('비밀번호를 만들었습니다.', 'ok'); done(true) }
+        try { await call('setUserPassword', [uid, a]); state.pw = a; state.pwUid = uid; savePw(uid, a, $('pwKeep').checked); setIdStatus(uid, true); if ($('pwField')) $('pwField').value = a; toast('비밀번호를 만들었습니다.', 'ok'); done(true) }
         catch (e) { $('pwErr').textContent = e.message }
       })
     })
   }
-  function askPassword(uid, msg) {  // 이미 비밀번호가 있는 사용자
-    return new Promise((res) => {
-      modal(`<h3>🔒 비밀번호 입력</h3><p class="small muted" style="margin:4px 0 0">사용자 ID <b>${esc(uid)}</b>의 비밀번호를 입력하세요.</p>
-        ${msg ? `<div class="notice warn small" style="margin-top:10px">${esc(msg)}</div>` : ''}
-        <label class="f">비밀번호</label><input class="input" id="pwIn" type="password" maxlength="12" autocomplete="current-password">
-        ${pwKeepBox}
-        <div class="field-err" id="pwErr"></div>
-        <div class="row between" style="margin-top:14px"><button class="ghost sm" id="pwForgot">비밀번호를 잊으셨나요?</button>
-          <span class="row"><button class="btn sm" id="pwCancel">취소</button><button class="btn sm primary" id="pwGo">확인</button></span></div>`)
-      const done = (v) => { closeModal(); res(v) }
-      $('pwCancel').onclick = () => done(false)
-      $('pwForgot').onclick = () => { closeModal(); openPwReset(uid).then(() => res(false)) }
-      $('pwIn').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) $('pwGo').click() })
-      $('pwGo').onclick = () => {
-        const v = $('pwIn').value.trim()
-        if (!v) return ($('pwErr').textContent = '비밀번호를 입력하세요.')
-        state.pw = v; savePw(uid, v, $('pwKeep').checked); done(true)
-      }
-    })
+  // 아이디에 비밀번호가 있는지(없으면 [비번 생성] 단추를 보여 준다)
+  const idStat = { uid: '', hasPassword: null }
+  async function idStatus(uid, force) {
+    uid = String(uid || '').trim()
+    if (!uid) { idStat.uid = ''; idStat.hasPassword = null; return null }
+    if (!force && idStat.uid === uid && idStat.hasPassword !== null) return idStat
+    try { const r = await call('userStatus', [uid]); idStat.uid = uid; idStat.hasPassword = !!r.hasPassword } catch (_) { return null }
+    return idStat
+  }
+  function setIdStatus(uid, has) { idStat.uid = uid; idStat.hasPassword = has; updatePwUi() }
+  function updatePwUi() {
+    const f = $('pwField'); if (!f) return
+    const cur = $('uid') ? $('uid').value.trim() : ''
+    const none = idStat.uid && idStat.uid === cur && idStat.hasPassword === false   // 아직 비밀번호가 없는 아이디
+    f.style.display = none ? 'none' : ''
+    $('pwMake').style.display = none ? '' : 'none'
+    $('pwForgotMain').style.display = none ? 'none' : ''
   }
   function openPwReset(uid) {  // 비밀번호 분실 → 관리자에게 초기화 요청
     return new Promise((res) => {
@@ -274,7 +306,8 @@
   async function loadUser(quiet) {
     const uid = ($('uid') ? $('uid').value : state.uid).trim(); if ($('uidErr')) $('uidErr').textContent = ''
     if (!uid) return ($('uidErr').textContent = '사용자 ID를 입력하세요.')
-    if (uid !== state.uid) { state.pw = pwFor(uid); clearUserView() }   // 다른 ID면 앞 사람 화면을 지우고 저장해 둔 비밀번호로 바꿔 쓴다
+    if (state.pwUid !== uid) { state.pw = pwFor(uid); state.pwUid = uid }   // 다른 ID면 그 ID의 비밀번호로 바꿔 쓴다
+    if (uid !== state.uid) clearUserView()                                  // 앞 사람 화면은 지운다
     // 지난 자료를 먼저 보여 주는 건 이 브라우저에 비밀번호가 저장돼 있을 때만 (남의 ID를 넣고 지난 화면을 엿볼 수 없게)
     const cached = !quiet && state.pw && ss.get('user_' + uid)
     if (cached && !(state.user && state.user.userId === uid)) { state.user = cached; state.uid = uid; renderUserBody(); refreshing(true) }
@@ -283,18 +316,20 @@
         const d = await call('getUserData', [uid, state.pw])
         if (d.hasPassword === false) {   // 아직 비밀번호가 없는 ID — 먼저 정해야 한다
           if (quiet) return
-          refreshing(false); clearUserView(uid)
+          refreshing(false); clearUserView(uid); setIdStatus(uid, false)
           if (!(await askNewPassword(uid))) { if ($('uidErr')) $('uidErr').textContent = '비밀번호를 정해야 내 정보를 볼 수 있습니다.'; return }
           continue
         }
+        setIdStatus(uid, true)
         state.user = d; state.uid = uid; ls.set(LS.uid, uid); ss.set('user_' + uid, d); refreshing(false); renderUserBody(); return
       } catch (e) {
         refreshing(false)
-        if (e.code === 'pw_required' || e.code === 'pw_bad') {
+        if (e.code === 'pw_required' || e.code === 'pw_bad') {   // 비밀번호 칸에서 다시 입력하게 한다
           if (quiet) return
-          savePw(uid, null, false); clearUserView(uid)
-          if (!(await askPassword(uid, e.code === 'pw_bad' ? '비밀번호가 맞지 않습니다. 다시 입력하세요.' : ''))) return
-          continue
+          state.pw = null; savePw(uid, null, false); clearUserView(uid); setIdStatus(uid, true)
+          if ($('pwField')) { $('pwField').value = ''; $('pwField').focus() }
+          if ($('uidErr')) $('uidErr').textContent = e.code === 'pw_bad' ? '비밀번호가 맞지 않습니다. 다시 입력하세요.' : '비밀번호를 입력하세요.'
+          return
         }
         if ($('uidErr')) $('uidErr').textContent = e.message; else toast(e.message, 'err')
         return
