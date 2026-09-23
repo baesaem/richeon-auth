@@ -205,7 +205,7 @@
     if ('applyGuide' in u) setGuide(u.applyGuide)
     const guide = state.guide || ''
     // 2·3·4번 구역은 아래로 길게 늘어놓지 않고 탭으로 (앱 인증 신청 · 소유 앱 · 관리자에게 메시지)
-    const tabs = [['register', '앱 인증 신청'], ['apps', '소유 앱(인증된 기기관리)'], ['msgs', '관리자에게 메시지']]
+    const tabs = [['register', '앱 인증 신청'], ['apps', '소유 앱(인증된 기기관리)'], ['msgs', '메세지']]
     if (preApp) state.utab = regById[preApp] ? 'apps' : 'register'
     if (!tabs.some(([k]) => k === state.utab)) state.utab = regs.length || !others.length ? 'apps' : 'register'
     const panel = {
@@ -273,11 +273,16 @@
           const r = await call('getAuthCode', [u.userId, appId])
           if (!r.success) { toast(r.error, 'err'); await loadUser(); return }
           const app = u.apps.find((a) => a.appId === appId) || {}
+          // 인증에 쓸 수 있는 기기가 이미 가득 찼으면 안내하고 '소유 앱'(기기 관리)으로 갈 수 있게
+          const reg = u.registrations.find((x) => x.appId === appId) || {}
+          const used = (reg.devices || []).length, maxDev = reg.maxDevices || 0
+          const full = maxDev && used >= maxDev
           const card = $('codeCard'); card.style.display = ''
           card.innerHTML = `<h2>🔑 인증번호 <span class="chip gold">${esc(r.appName)}</span></h2><p class="sub">아래 번호를 복사해 앱의 <b>[정식판으로 전환]</b> 창에 사용자 ID와 함께 입력하세요. 같은 승인 기간에는 같은 번호가 발급됩니다.</p>
             <div class="codebox"><div class="lbl">License Code</div><div class="val" id="codeVal">${esc(r.code)}</div><div class="hint">사용자 ID <b>${esc(u.userId)}</b> · 발급 ${r.copyCount}/${r.maxCopies}회${r.remaining <= 2 ? ' · 남은 발급 ' + r.remaining + '회' : ''}</div></div>
-            <div class="row" style="margin-top:12px"><button class="btn primary" id="cpCode">📋 인증번호 복사</button>${app.appUrl ? `<a class="btn" href="${esc(app.appUrl)}" target="_blank" rel="noopener">앱 열기 ↗</a>` : ''}<span class="tiny muted">기기 ${(state.user.registrations.find((x) => x.appId === appId) || {}).maxDevices || ''}대까지 같은 번호로 인증할 수 있습니다.</span></div>`
-          $('cpCode').onclick = () => copyText(r.code).then(() => { toast('인증번호를 복사했습니다.', 'ok'); $('cpCode').textContent = '✅ 복사됨'; setTimeout(() => ($('cpCode').textContent = '📋 인증번호 복사'), 2000) })
+            ${full ? `<div class="notice warn" style="margin-top:12px;align-items:center">⚠<span class="grow">이 인증번호는 이미 <b>${used}대</b>에서 쓰고 있습니다(최대 ${maxDev}대). 새 기기에서 인증하면 한도 초과로 거절됩니다. 쓰지 않는 기기를 먼저 해제하세요.</span><button class="btn sm" data-go="devices">기기 관리하기</button></div>` : ''}
+            <div class="row" style="margin-top:12px"><button class="btn primary" id="cpCode">📋 인증번호 복사</button>${app.appUrl ? `<a class="btn" href="${esc(app.appUrl)}" target="_blank" rel="noopener">앱 열기 ↗</a>` : ''}<span class="tiny muted">기기 ${maxDev || ''}대까지 같은 번호로 인증할 수 있습니다.</span></div>`
+          bindCodeCard()
           card.scrollIntoView({ behavior: 'smooth', block: 'center' })
           const regs = await call('getUserData', [u.userId]); state.user = regs; renderCounts()
         } catch (e) { toast(e.message, 'err') }
@@ -286,7 +291,13 @@
   }
   function renderCounts() { /* 인증번호 카드를 유지한 채 앱 목록만 새로 그림 */
     const card = $('codeCard'); const html = card ? card.innerHTML : ''; const shown = card && card.style.display !== 'none'
-    renderUserBody(); if (shown) { $('codeCard').style.display = ''; $('codeCard').innerHTML = html; const b = $('cpCode'); if (b) b.onclick = () => copyText($('codeVal').textContent).then(() => toast('인증번호를 복사했습니다.', 'ok')) }
+    renderUserBody(); if (shown) { $('codeCard').style.display = ''; $('codeCard').innerHTML = html; bindCodeCard() }
+  }
+  function bindCodeCard() {
+    const cp = $('cpCode')
+    if (cp) cp.onclick = () => copyText($('codeVal').textContent).then(() => { toast('인증번호를 복사했습니다.', 'ok'); cp.textContent = '✅ 복사됨'; setTimeout(() => (cp.textContent = '📋 인증번호 복사'), 2000) })
+    const go = document.querySelector('[data-go="devices"]')
+    if (go) go.onclick = () => { state.utab = 'apps'; renderCounts(); const el = $('userTabs'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }) }
   }
 
   // 발급 신청 안내글: 줄바꿈 그대로 보여 주고, **글자**는 강조, '계좌'·'은행'이 든 줄은 강조 + 그 줄의 계좌번호는 복사 단추로
