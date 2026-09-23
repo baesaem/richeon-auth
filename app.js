@@ -62,6 +62,21 @@
       document.body.appendChild(el); el.select(); document.execCommand('copy'); el.remove()
     })
   }
+  // 상단 제목: 관리자로 로그인했으면 '관리자' 표시를 붙이고, 누르면 관리자 화면을 새로 불러온다
+  function setBrand(adminOn) {
+    const brand = document.querySelector('.brand'); if (!brand) return
+    let tag = $('brandAdmin')
+    if (adminOn && !tag) { tag = document.createElement('span'); tag.id = 'brandAdmin'; tag.className = 'chip gold'; tag.textContent = '관리자'; brand.appendChild(tag) }
+    if (!adminOn && tag) tag.remove()
+    brand.title = adminOn ? '누르면 관리자 화면을 새로 불러옵니다' : '처음 화면'
+    brand.onclick = adminOn ? (e) => { e.preventDefault(); reloadAdmin() } : null
+  }
+  function reloadAdmin() {
+    refreshing(true)
+    loadAdmin().then(() => { refreshing(false); if (state.route === 'admin' && state.token) renderDash(); toast('새로 불러왔습니다.', 'ok') })
+      .catch((e) => { refreshing(false); toast(e.message, 'err') })
+  }
+
   // 테마
   const applyTheme = (t) => { document.documentElement.dataset.theme = t; ls.set(LS.theme, t) }
   applyTheme(ls.get(LS.theme) || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'))
@@ -140,7 +155,7 @@
 
   // ── 사용자 화면 ───────────────────────────────────────────
   function renderUser() {
-    document.body.classList.remove('admin')
+    document.body.classList.remove('admin'); setBrand(false)
     const uid = state.uid || ls.get(LS.uid) || ''
     const savedPw = (uid && pwFor(uid)) || ''   // 이 브라우저에 기억해 둔 비밀번호가 있으면 미리 채운다
     $('app').innerHTML = `
@@ -502,7 +517,7 @@
     loadAdmin().then(() => { refreshing(false); renderDash() }).catch((e) => { refreshing(false); fail(e) })
   }
   function renderLogin(msg) {
-    document.body.classList.remove('admin')
+    document.body.classList.remove('admin'); setBrand(false)
     $('app').innerHTML = `<div class="card fade" style="max-width:440px;margin:40px auto"><h2>🔧 관리자 로그인</h2><p class="sub">리천 인증 센터 관리자</p>
       ${msg ? `<div class="notice warn small">${esc(msg)}</div>` : ''}
       <label class="f">비밀번호</label><input class="input" id="aPwd" type="password" autocomplete="current-password">
@@ -530,7 +545,7 @@
   const appName = (id) => { const a = (state.admin.apps || []).find((x) => x.appId === id); return a ? a.appName : id }
 
   function renderDash() {
-    document.body.classList.add('admin') // 관리자 표가 넓어 화면을 넓게 쓴다
+    document.body.classList.add('admin'); setBrand(true) // 관리자 표가 넓어 화면을 넓게 쓴다
     const d = state.admin, s = d.stats
     const resetCount = (d.users || []).filter((u) => u.resetRequested).length   // 비밀번호 초기화 요청
     $('app').innerHTML = `

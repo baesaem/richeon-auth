@@ -43,6 +43,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .brand b { display: block; font-size: 1.02rem; letter-spacing: -.01em; }
 .brand small { display: block; color: var(--text-3); font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; }
 .top-right { display: flex; gap: 6px; align-items: center; }
+/* 관리자로 로그인했을 때 제목 옆 표시 */
+.brand #brandAdmin { margin-left: 4px; font-weight: 800; letter-spacing: .02em; }
 
 .wrap { position: relative; z-index: 1; max-width: 980px; margin: 0 auto; padding: 28px 18px 60px; }
 /* 관리자 화면은 표 칸이 많아 화면을 넓게 쓴다 */
