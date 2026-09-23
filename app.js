@@ -205,14 +205,13 @@
     if ('applyGuide' in u) setGuide(u.applyGuide)
     const guide = state.guide || ''
     // 2·3·4번 구역은 아래로 길게 늘어놓지 않고 탭으로 (앱 등록 신청 · 소유 앱 · 관리자에게 메시지)
-    const tabs = []
-    if (others.length) tabs.push(['register', '앱 등록 신청'])
-    tabs.push(['apps', '소유 앱(인증된 기기관리)'], ['msgs', '관리자에게 메시지'])
-    if (preApp) state.utab = regById[preApp] ? 'apps' : (others.length ? 'register' : 'apps')
+    const tabs = [['register', '앱 등록 신청'], ['apps', '소유 앱(인증된 기기관리)'], ['msgs', '관리자에게 메시지']]
+    if (preApp) state.utab = regById[preApp] ? 'apps' : 'register'
     if (!tabs.some(([k]) => k === state.utab)) state.utab = regs.length || !others.length ? 'apps' : 'register'
     const panel = {
       register: () => `<p class="sub">구입한 앱을 골라 등록 신청하세요.${guide ? ' 신청 전에 위의 <b>[📋 발급 신청 안내]</b>를 꼭 읽어 주세요.' : ''} 관리자가 확인한 뒤 승인하면 <b>소유 앱</b> 탭에서 인증번호를 받을 수 있습니다.</p>
-        <div class="row"><select class="input grow" id="newApp">${others.map((a) => `<option value="${esc(a.appId)}" ${a.appId === preApp ? 'selected' : ''}>${esc(a.appName)}</option>`).join('')}</select><button class="btn primary" id="newAppGo">등록 신청</button></div>`,
+        ${others.length ? `<div class="row"><select class="input grow" id="newApp">${others.map((a) => `<option value="${esc(a.appId)}" ${a.appId === preApp ? 'selected' : ''}>${esc(a.appName)}</option>`).join('')}</select><button class="btn primary" id="newAppGo">등록 신청</button></div>`
+          : `<div class="empty">신청할 수 있는 앱이 남아 있지 않습니다. 이미 모든 앱을 신청하셨습니다. <b>소유 앱</b> 탭에서 상태와 인증번호를 확인하세요.</div>`}`,
       msgs: () => `<p class="sub">입금 안내, 기기 추가 요청 등을 남기면 관리자가 답장합니다.</p>
         <div class="thread" id="thread">${threadHtml(u.messages)}</div>
         <div class="row" style="margin-top:10px"><input class="input grow" id="msgIn" placeholder="메시지 입력"><button class="btn" id="msgGo">보내기</button></div>`,
