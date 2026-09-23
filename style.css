@@ -108,6 +108,9 @@ textarea.input { height: auto; min-height: 72px; padding: 10px 14px; resize: ver
 .badge.none { background: var(--bg-3); color: var(--text-3); }
 .chip { display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border-radius: 8px; background: var(--bg-3); font-size: .76rem; font-weight: 600; color: var(--text-2); }
 .chip.gold { background: var(--gold-soft); color: var(--gold); }
+/* 눌러서 목록을 여는 숫자 칩 */
+button.chip.link { border: 1px solid var(--line-2); cursor: pointer; font: inherit; font-size: .78rem; font-weight: 700; padding: 0 12px; }
+button.chip.link:hover { background: var(--navy-soft); color: var(--navy); }
 
 /* 앱 카드 목록 */
 .apps { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }

@@ -719,17 +719,54 @@
       ${list.length ? list.map((u) => `<tr>
         <td class="mono" style="font-weight:700">${esc(u.userId)}</td>
         <td>${u.resetRequested ? '<span class="badge pending">초기화 요청</span>' : u.hasPassword ? '<span class="badge approved">설정됨</span>' : '<span class="badge none">없음</span>'}</td>
-        <td>${cnt(u, d.registrations)}</td><td>${cnt(u, d.devices)}</td><td class="tiny muted">${u.updatedAt ? fmtT(u.updatedAt) : '—'}</td>
+        <td><button class="chip link" data-uapps="${esc(u.userId)}" title="등록 앱 목록 보기">${cnt(u, d.registrations)}</button></td>
+        <td><button class="chip link" data-udevs="${esc(u.userId)}" title="기기 목록 보기">${cnt(u, d.devices)}</button></td>
+        <td class="tiny muted">${u.updatedAt ? fmtT(u.updatedAt) : '—'}</td>
         <td>${u.hasPassword || u.resetRequested ? `<button class="btn xs danger" data-pwreset="${esc(u.userId)}">초기화</button>` : '<span class="tiny muted">—</span>'}</td></tr>`).join('') : `<tr><td colspan="6"><div class="empty">${q ? `'${esc(state.userQ)}'에 맞는 사용자가 없습니다.` : '사용자가 없습니다.'}</div></td></tr>`}
       </tbody></table></div>`
+    $('panel').querySelectorAll('[data-uapps]').forEach((b) => { b.onclick = () => openUserApps(b.dataset.uapps) })
+    $('panel').querySelectorAll('[data-udevs]').forEach((b) => { b.onclick = () => openUserDevices(b.dataset.udevs) })
     const qIn = $('userQ')
-    qIn.oninput = () => { state.userQ = qIn.value; const at = qIn.selectionStart; panelUsers(); const n = $('userQ'); n.focus(); try { n.setSelectionRange(at, at) } catch (_) {} }
+    qIn.oninput = () =>{ state.userQ = qIn.value; const at = qIn.selectionStart; panelUsers(); const n = $('userQ'); n.focus(); try { n.setSelectionRange(at, at) } catch (_) {} }
     if ($('userQClear')) $('userQClear').onclick = () => { state.userQ = ''; panelUsers(); $('userQ').focus() }
     $('panel').querySelectorAll('[data-pwreset]').forEach((b) => {
       b.onclick = async () => {
         const uid = b.dataset.pwreset
         if (!(await confirmBox('비밀번호 초기화', `<b>${esc(uid)}</b> 님의 비밀번호를 지웁니다. 그 사용자는 다음에 들어올 때 새 비밀번호를 정하게 되고, 메시지로도 알려 줍니다.`, '초기화', true))) return
         act(b, () => admin('resetUserPassword', uid), '초기화했습니다.', (r, dd) => { const x = (dd.users || []).find((z) => z.userId === uid); if (x) { x.hasPassword = false; x.resetRequested = false } })
+      }
+    })
+  }
+
+  // 사용자 탭에서 숫자를 누르면 그 사용자의 등록 앱·기기 목록을 보여 준다
+  function openUserApps(uid) {
+    const d = state.admin
+    const regs = d.registrations.filter((r) => r.userId === uid).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
+    const devCount = (r) => d.devices.filter((x) => x.appId === r.appId && x.userId === uid).length
+    modal(`<h3>${esc(uid)} — 등록 앱 ${regs.length}개</h3>
+      ${regs.length ? `<div class="devs" style="margin-top:10px">${regs.map((r) => `<div class="dev"><div class="grow"><div class="nm">${esc(appName(r.appId))} ${badge(r.status)}</div>
+        <div class="mt">발급 ${r.copyCount}/${d.config.maxCopies} · 승인 ${r.totalApprovals}회 · 기기 ${devCount(r)}/${r.maxDevices || d.config.maxDevices}대 · 등록 ${fmt(r.createdAt)}${r.purchaserName ? ' · 입금자 ' + esc(r.purchaserName) : ''}</div></div></div>`).join('')}</div>`
+        : '<div class="empty">등록한 앱이 없습니다.</div>'}
+      <div class="row" style="justify-content:flex-end;margin-top:14px"><button class="btn sm" id="mClose">닫기</button></div>`)
+    $('mClose').onclick = closeModal
+  }
+  function openUserDevices(uid) {
+    const d = state.admin
+    const list = d.devices.filter((x) => x.userId === uid).sort((a, b) => (b.lastSeen || '').localeCompare(a.lastSeen || ''))
+    modal(`<h3>${esc(uid)} — 인증된 기기 ${list.length}대</h3>
+      ${list.length ? `<div class="devs" style="margin-top:10px">${list.map((x) => `<div class="dev"><span class="ico">${/모바일|android|ios|iphone/i.test(x.platform) ? '📱' : '💻'}</span><div class="grow">
+        <div class="nm">${esc(x.deviceName || '이름 없는 기기')} <span class="muted tiny mono">#${esc(x.deviceId.slice(-6))}</span></div>
+        <div class="mt">${esc(appName(x.appId))} · ${esc(x.platform)}${x.appVersion ? ' · ' + esc(x.appVersion) : ''} · 마지막 사용 ${fmtT(x.lastSeen)}</div></div>
+        <button class="ghost xs" data-rel="${esc(x.id)}" title="이 기기 해제">해제</button></div>`).join('')}</div>`
+        : '<div class="empty">인증된 기기가 없습니다.</div>'}
+      <div class="row" style="justify-content:flex-end;margin-top:14px"><button class="btn sm" id="mClose">닫기</button></div>`)
+    $('mClose').onclick = closeModal
+    $('modalBox').querySelectorAll('[data-rel]').forEach((b) => {
+      b.onclick = async () => {
+        const id = b.dataset.rel
+        if (!(await confirmBox('기기 해제', '이 기기의 앱은 체험판으로 돌아갑니다. 사용자가 다시 인증하면 다시 등록됩니다.', '해제', true))) return openUserDevices(uid)
+        act(null, () => admin('adminRemoveDevice', id), '해제했습니다.', P.dropDevice(id))
+        closeModal()
       }
     })
   }
