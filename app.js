@@ -371,7 +371,7 @@
     const d = state.admin, s = d.stats
     $('app').innerHTML = `
       <div class="row between fade" style="margin-bottom:14px"><div><h1 style="margin:0;font-size:1.35rem">관리자 대시보드</h1><div class="tiny muted">서버 v${esc(d.serverVersion)} · ${d.spreadsheetUrl ? `<a href="${esc(d.spreadsheetUrl)}" target="_blank" rel="noopener">데이터 시트 열기 ↗</a>` : ''}</div></div>
-        <div class="row"><button class="ghost sm" id="aReload">새로고침</button><button class="ghost sm" id="aOut">로그아웃</button></div></div>
+        <div class="row"><a class="btn sm" href="${esc(location.origin + location.pathname)}#/" target="_blank" rel="noopener">👤 사용자 앱 열기 ↗</a><button class="ghost sm" id="aReload">새로고침</button><button class="ghost sm" id="aOut">로그아웃</button></div></div>
       <div class="stats fade">
         <div class="stat"><b>${s.total}</b><span>전체 등록</span></div>
         <div class="stat" style="${s.pending ? 'border-color:var(--warn)' : ''}"><b style="${s.pending ? 'color:var(--warn)' : ''}">${s.pending}</b><span>승인 대기</span></div>
