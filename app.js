@@ -204,14 +204,14 @@
     const preApp = state.preApp; state.preApp = ''
     if ('applyGuide' in u) setGuide(u.applyGuide)
     const guide = state.guide || ''
-    // 2·3·4번 구역은 아래로 길게 늘어놓지 않고 탭으로 (앱 등록 신청 · 관리자에게 메시지 · 내 앱)
+    // 2·3·4번 구역은 아래로 길게 늘어놓지 않고 탭으로 (앱 등록 신청 · 소유 앱 · 관리자에게 메시지)
     const tabs = []
     if (others.length) tabs.push(['register', '앱 등록 신청'])
-    tabs.push(['msgs', '관리자에게 메시지'], ['apps', '내 앱'])
+    tabs.push(['apps', '소유 앱'], ['msgs', '관리자에게 메시지'])
     if (preApp) state.utab = regById[preApp] ? 'apps' : (others.length ? 'register' : 'apps')
     if (!tabs.some(([k]) => k === state.utab)) state.utab = regs.length || !others.length ? 'apps' : 'register'
     const panel = {
-      register: () => `<p class="sub">구입한 앱을 골라 등록 신청하세요.${guide ? ' 신청 전에 위의 <b>[📋 발급 신청 안내]</b>를 꼭 읽어 주세요.' : ''} 관리자가 확인한 뒤 승인하면 <b>내 앱</b> 탭에서 인증번호를 받을 수 있습니다.</p>
+      register: () => `<p class="sub">구입한 앱을 골라 등록 신청하세요.${guide ? ' 신청 전에 위의 <b>[📋 발급 신청 안내]</b>를 꼭 읽어 주세요.' : ''} 관리자가 확인한 뒤 승인하면 <b>소유 앱</b> 탭에서 인증번호를 받을 수 있습니다.</p>
         <div class="row"><select class="input grow" id="newApp">${others.map((a) => `<option value="${esc(a.appId)}" ${a.appId === preApp ? 'selected' : ''}>${esc(a.appName)}</option>`).join('')}</select><button class="btn primary" id="newAppGo">등록 신청</button></div>`,
       msgs: () => `<p class="sub">입금 안내, 기기 추가 요청 등을 남기면 관리자가 답장합니다.</p>
         <div class="thread" id="thread">${threadHtml(u.messages)}</div>
@@ -323,7 +323,7 @@
       const name = $('rName').value.trim(), msg = $('rMsg').value.trim()
       try {
         const r = await call('requestRegistration', [state.user.userId, appId, src, name, msg]); closeModal(); toast('신청했습니다. 관리자 승인 후 인증번호를 받을 수 있습니다.', 'ok')
-        state.utab = 'apps'  // 신청한 앱의 상태를 바로 볼 수 있게 '내 앱' 탭으로
+        state.utab = 'apps'  // 신청한 앱의 상태를 바로 볼 수 있게 '소유 앱' 탭으로
         userPatch((d) => {
           const ex = d.registrations.find((x) => x.appId === appId)
           const row = { id: r.id, appId, status: 'pending', copyCount: 0, totalApprovals: 0, createdAt: new Date().toISOString(), approvedAt: '', purchaseSource: src, maxDevices: 3, devices: [] }
