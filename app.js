@@ -84,7 +84,7 @@
   $('footVer').textContent = `인증 센터 ${CFG.siteVersion || ''}` + (API !== CFG.api ? ' · 시험 서버' : '')
 
   // ── 상태 · 라우팅 ────────────────────────────────────────
-  const state = { route: 'user', key: '', token: ls.get(LS.token), uid: '', user: null, admin: null, tab: 'regs', filter: 'all', appFilter: 'all', msgUser: '', guide: null, guideP: null, utab: '', pw: null, userQ: '', appQ: '', devQ: '' }
+  const state = { route: 'user', key: '', token: ls.get(LS.token), uid: '', user: null, admin: null, tab: 'regs', filter: 'all', appFilter: 'all', msgUser: '', guide: null, guideP: null, utab: '', pw: null, userQ: '', appQ: '', devQ: '', acOpen: '' }
   function parseRoute() {
     const h = location.hash.replace(/^#\/?/, '')
     const [path, q] = h.split('?')
@@ -543,6 +543,25 @@
     })
   }
   const appName = (id) => { const a = (state.admin.apps || []).find((x) => x.appId === id); return a ? a.appName : id }
+  // 검색칸 아래에 뜨는 고르기 목록(드롭다운) — 칸을 누르면 전체가, 입력하면 맞는 것만 뜬다
+  const pickerBox = (inputId, placeholder, value, wide) => `<span class="ac-wrap grow" style="max-width:${wide || 360}px"><input class="input" id="${inputId}" placeholder="${esc(placeholder)}" value="${esc(value || '')}" autocomplete="off"><div class="ac hidden" id="${inputId}List"></div></span>`
+  function picker(inputId, items, onPick) {
+    const inp = $(inputId), box = $(inputId + 'List')
+    if (!inp || !box) return
+    const close = () => { const b = $(inputId + 'List'); if (b) b.classList.add('hidden'); if (state.acOpen === inputId) state.acOpen = '' }
+    const open = () => {
+      const q = inp.value.trim().toLowerCase()
+      const hit = items.filter((t) => !q || String(t).toLowerCase().includes(q)).slice(0, 15)
+      box.innerHTML = hit.length ? hit.map((t) => `<button type="button" class="ac-item">${esc(t)}</button>`).join('') : '<div class="ac-empty">맞는 항목이 없습니다.</div>'
+      box.querySelectorAll('.ac-item').forEach((b, i) => { b.onmousedown = (e) => { e.preventDefault(); close(); onPick(hit[i]) } })
+      box.classList.remove('hidden'); state.acOpen = inputId
+    }
+    inp.addEventListener('focus', open)
+    inp.addEventListener('input', open)
+    inp.addEventListener('blur', () => setTimeout(() => { const cur = $(inputId); if (!cur || document.activeElement !== cur) close() }, 150))
+    inp.addEventListener('keydown', (e) => { if (e.key === 'Escape') close() })
+    if (state.acOpen === inputId || document.activeElement === inp) open()   // 글자를 칠 때마다 다시 그려도 목록이 계속 보이게
+  }
 
   function renderDash() {
     document.body.classList.add('admin'); setBrand(true) // 관리자 표가 넓어 화면을 넓게 쓴다
@@ -632,8 +651,7 @@
     const q = (state.appQ || '').trim().toLowerCase()
     const apps = q ? all.filter((a) => [a.appName, a.description, a.appId].some((x) => String(x || '').toLowerCase().includes(q))) : all
     $('panel').innerHTML = `
-      <div class="row" style="margin-bottom:12px"><input class="input grow" id="appQ" list="appNames" placeholder="앱 검색 (이름 일부만 입력해도 됩니다)" value="${esc(state.appQ || '')}" autocomplete="off" style="max-width:360px">
-        <datalist id="appNames">${all.map((a) => `<option value="${esc(a.appName)}"></option>`).join('')}</datalist>
+      <div class="row" style="margin-bottom:12px">${pickerBox('appQ', '앱 검색 (누르면 목록, 이름 일부만 입력해도 됩니다)', state.appQ)}
         ${q ? '<button class="ghost sm" id="appQClear">지우기</button>' : ''}
         <span class="tiny muted right">${q ? `${apps.length}개 찾음 / 전체 ${all.length}개` : `전체 ${all.length}개`}</span></div>
       <div class="row" style="margin-bottom:14px"><input class="input grow" id="nName" placeholder="새 앱 이름 (예: 학사일정 편성 도우미)"><input class="input grow" id="nDesc" placeholder="설명(선택)"><input class="input grow" id="nUrl" placeholder="앱 주소(선택) https://…"><button class="btn primary" id="nGo">앱 추가</button></div>
@@ -647,6 +665,7 @@
       </tbody></table></div>`
     const aq = $('appQ')
     aq.oninput = () => { state.appQ = aq.value; const at = aq.selectionStart; panelApps(); const n = $('appQ'); n.focus(); try { n.setSelectionRange(at, at) } catch (_) {} }
+    picker('appQ', all.map((a) => a.appName), (v) => { state.appQ = v; panelApps() })
     if ($('appQClear')) $('appQClear').onclick = () => { state.appQ = ''; panelApps(); $('appQ').focus() }
     $('nGo').onclick =() => { const n = $('nName').value.trim(); if (!n) return toast('앱 이름을 입력하세요.', 'err'); act($('nGo'), async () => { const r = await admin('addApp', n, $('nDesc').value.trim(), $('nUrl').value.trim()); state.tab = 'apps'; setTimeout(() => openAppInfo(r.appId), 50) }, '앱을 추가했습니다.') }
     $('panel').querySelectorAll('[data-e]').forEach((b) => { b.onclick = () => openAppInfo(b.dataset.e) })
@@ -688,8 +707,7 @@
     const list = q ? all.filter((x) => [x.userId, appName(x.appId), x.deviceName, x.platform].some((v) => String(v || '').toLowerCase().includes(q))) : all
     const ids = [...new Set(all.map((x) => x.userId))].sort()
     $('panel').innerHTML = `<p class="small muted" style="margin:0 0 12px">앱에서 인증한 기기입니다. 기본 한도는 인증번호당 <b>${d.config.maxDevices}대</b>(설정에서 변경)이고, 사용자별 예외는 등록 관리의 기기 칸에서 정합니다.</p>
-      <div class="row" style="margin-bottom:12px"><input class="input grow" id="devQ" list="devUserIds" placeholder="사용자 ID·앱·기기 이름으로 검색" value="${esc(state.devQ || '')}" autocomplete="off" style="max-width:360px">
-        <datalist id="devUserIds">${ids.map((u) => `<option value="${esc(u)}"></option>`).join('')}</datalist>
+      <div class="row" style="margin-bottom:12px">${pickerBox('devQ', '사용자 ID·앱·기기 이름으로 검색 (누르면 목록)', state.devQ)}
         ${q ? '<button class="ghost sm" id="devQClear">지우기</button>' : ''}
         <span class="tiny muted right">${q ? `${list.length}대 찾음 / 전체 ${all.length}대` : `전체 ${all.length}대`}</span></div>
       <div class="tbl-wrap"><table class="tbl"><thead><tr><th>사용자 ID</th><th>앱</th><th>기기</th><th>환경</th><th>앱 버전</th><th>처음</th><th>마지막 사용</th><th></th></tr></thead><tbody>
@@ -697,6 +715,7 @@
       </tbody></table></div>`
     const dq = $('devQ')
     dq.oninput = () => { state.devQ = dq.value; const at = dq.selectionStart; panelDevices(); const n = $('devQ'); n.focus(); try { n.setSelectionRange(at, at) } catch (_) {} }
+    picker('devQ', ids.concat((state.admin.apps || []).map((a) => a.appName)), (v) => { state.devQ = v; panelDevices() })
     if ($('devQClear')) $('devQClear').onclick = () => { state.devQ = ''; panelDevices(); $('devQ').focus() }
     $('panel').querySelectorAll('[data-r]').forEach((b) => { b.onclick = async () => { if (await confirmBox('기기 해제', '이 기기의 앱은 체험판으로 돌아갑니다. 사용자가 다시 인증하면 다시 등록됩니다.', '해제', true)) act(b, () => admin('adminRemoveDevice', b.dataset.r), '해제했습니다.', P.dropDevice(b.dataset.r)) } })
   }
@@ -711,8 +730,7 @@
     const list = q ? all.filter((u) => u.userId.toLowerCase().includes(q)) : all
     const cnt = (u, arr) => arr.filter((x) => x.userId === u.userId).length
     $('panel').innerHTML = `<p class="small muted" style="margin:0 0 12px">사용자가 인증 센터에서 정한 비밀번호(6~12자리)입니다. 비밀번호를 잊어 <b>초기화 요청</b>이 오면, 본인이 맞는지 확인한 뒤 [초기화]를 누르세요. 사용자는 다음에 들어올 때 새 비밀번호를 정합니다.</p>
-      <div class="row" style="margin-bottom:12px"><input class="input grow" id="userQ" list="userIds" placeholder="사용자 ID 검색 (일부만 입력해도 됩니다)" value="${esc(state.userQ || '')}" autocomplete="off" style="max-width:360px">
-        <datalist id="userIds">${all.map((u) => `<option value="${esc(u.userId)}"></option>`).join('')}</datalist>
+      <div class="row" style="margin-bottom:12px">${pickerBox('userQ', '사용자 ID 검색 (누르면 목록, 일부만 입력해도 됩니다)', state.userQ)}
         ${q ? '<button class="ghost sm" id="userQClear">지우기</button>' : ''}
         <span class="tiny muted right">${q ? `${list.length}명 찾음 / 전체 ${all.length}명` : `전체 ${all.length}명`}</span></div>
       <div class="tbl-wrap"><table class="tbl"><thead><tr><th>사용자 ID</th><th>비밀번호</th><th>등록 앱</th><th>기기</th><th>마지막 변경</th><th></th></tr></thead><tbody>
@@ -727,7 +745,8 @@
     $('panel').querySelectorAll('[data-uapps]').forEach((b) => { b.onclick = () => openUserApps(b.dataset.uapps) })
     $('panel').querySelectorAll('[data-udevs]').forEach((b) => { b.onclick = () => openUserDevices(b.dataset.udevs) })
     const qIn = $('userQ')
-    qIn.oninput = () =>{ state.userQ = qIn.value; const at = qIn.selectionStart; panelUsers(); const n = $('userQ'); n.focus(); try { n.setSelectionRange(at, at) } catch (_) {} }
+    qIn.oninput = () => { state.userQ = qIn.value; const at = qIn.selectionStart; panelUsers(); const n = $('userQ'); n.focus(); try { n.setSelectionRange(at, at) } catch (_) {} }
+    picker('userQ', all.map((u) => u.userId), (v) => { state.userQ = v; panelUsers() })
     if ($('userQClear')) $('userQClear').onclick = () => { state.userQ = ''; panelUsers(); $('userQ').focus() }
     $('panel').querySelectorAll('[data-pwreset]').forEach((b) => {
       b.onclick = async () => {

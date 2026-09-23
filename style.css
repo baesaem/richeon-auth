@@ -108,6 +108,12 @@ textarea.input { height: auto; min-height: 72px; padding: 10px 14px; resize: ver
 .badge.none { background: var(--bg-3); color: var(--text-3); }
 .chip { display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border-radius: 8px; background: var(--bg-3); font-size: .76rem; font-weight: 600; color: var(--text-2); }
 .chip.gold { background: var(--gold-soft); color: var(--gold); }
+/* 검색칸 아래 드롭다운 목록 */
+.ac-wrap { position: relative; display: block; min-width: 0; }
+.ac { position: absolute; z-index: 20; top: calc(100% + 4px); left: 0; right: 0; max-height: 260px; overflow-y: auto; background: var(--bg-2); border: 1px solid var(--line-2); border-radius: 12px; box-shadow: var(--shadow); padding: 4px; }
+.ac-item { display: block; width: 100%; text-align: left; border: none; background: transparent; color: var(--text); padding: 8px 10px; border-radius: 8px; font: inherit; font-size: .86rem; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ac-item:hover { background: var(--navy-soft); color: var(--navy); }
+.ac-empty { padding: 10px; color: var(--text-3); font-size: .82rem; }
 /* 눌러서 목록을 여는 숫자 칩 */
 button.chip.link { border: 1px solid var(--line-2); cursor: pointer; font: inherit; font-size: .78rem; font-weight: 700; padding: 0 12px; }
 button.chip.link:hover { background: var(--navy-soft); color: var(--navy); }
