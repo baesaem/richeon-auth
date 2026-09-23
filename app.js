@@ -84,7 +84,7 @@
   $('footVer').textContent = `인증 센터 ${CFG.siteVersion || ''}` + (API !== CFG.api ? ' · 시험 서버' : '')
 
   // ── 상태 · 라우팅 ────────────────────────────────────────
-  const state = { route: 'user', key: '', token: ls.get(LS.token), uid: '', user: null, admin: null, tab: 'regs', filter: 'all', appFilter: 'all', msgUser: '', guide: null, guideP: null, utab: '', pw: null }
+  const state = { route: 'user', key: '', token: ls.get(LS.token), uid: '', user: null, admin: null, tab: 'regs', filter: 'all', appFilter: 'all', msgUser: '', guide: null, guideP: null, utab: '', pw: null, userQ: '' }
   function parseRoute() {
     const h = location.hash.replace(/^#\/?/, '')
     const [path, q] = h.split('?')
@@ -687,16 +687,25 @@
     const byId = {}
     ;(d.users || []).forEach((u) => { byId[u.userId] = { ...u } })
     d.registrations.forEach((r) => { byId[r.userId] = byId[r.userId] || { userId: r.userId, hasPassword: false, resetRequested: false } })  // 비밀번호를 아직 안 만든 예전 사용자도 보여 준다
-    const list = Object.values(byId).sort((a, b) => (b.resetRequested ? 1 : 0) - (a.resetRequested ? 1 : 0) || a.userId.localeCompare(b.userId))
+    const all = Object.values(byId).sort((a, b) => (b.resetRequested ? 1 : 0) - (a.resetRequested ? 1 : 0) || a.userId.localeCompare(b.userId))
+    const q = (state.userQ || '').trim().toLowerCase()
+    const list = q ? all.filter((u) => u.userId.toLowerCase().includes(q)) : all
     const cnt = (u, arr) => arr.filter((x) => x.userId === u.userId).length
     $('panel').innerHTML = `<p class="small muted" style="margin:0 0 12px">사용자가 인증 센터에서 정한 비밀번호(6~12자리)입니다. 비밀번호를 잊어 <b>초기화 요청</b>이 오면, 본인이 맞는지 확인한 뒤 [초기화]를 누르세요. 사용자는 다음에 들어올 때 새 비밀번호를 정합니다.</p>
+      <div class="row" style="margin-bottom:12px"><input class="input grow" id="userQ" list="userIds" placeholder="사용자 ID 검색 (일부만 입력해도 됩니다)" value="${esc(state.userQ || '')}" autocomplete="off" style="max-width:360px">
+        <datalist id="userIds">${all.map((u) => `<option value="${esc(u.userId)}"></option>`).join('')}</datalist>
+        ${q ? '<button class="ghost sm" id="userQClear">지우기</button>' : ''}
+        <span class="tiny muted right">${q ? `${list.length}명 찾음 / 전체 ${all.length}명` : `전체 ${all.length}명`}</span></div>
       <div class="tbl-wrap"><table class="tbl"><thead><tr><th>사용자 ID</th><th>비밀번호</th><th>등록 앱</th><th>기기</th><th>마지막 변경</th><th></th></tr></thead><tbody>
       ${list.length ? list.map((u) => `<tr>
         <td class="mono" style="font-weight:700">${esc(u.userId)}</td>
         <td>${u.resetRequested ? '<span class="badge pending">초기화 요청</span>' : u.hasPassword ? '<span class="badge approved">설정됨</span>' : '<span class="badge none">없음</span>'}</td>
         <td>${cnt(u, d.registrations)}</td><td>${cnt(u, d.devices)}</td><td class="tiny muted">${u.updatedAt ? fmtT(u.updatedAt) : '—'}</td>
-        <td>${u.hasPassword || u.resetRequested ? `<button class="btn xs danger" data-pwreset="${esc(u.userId)}">초기화</button>` : '<span class="tiny muted">—</span>'}</td></tr>`).join('') : '<tr><td colspan="6"><div class="empty">사용자가 없습니다.</div></td></tr>'}
+        <td>${u.hasPassword || u.resetRequested ? `<button class="btn xs danger" data-pwreset="${esc(u.userId)}">초기화</button>` : '<span class="tiny muted">—</span>'}</td></tr>`).join('') : `<tr><td colspan="6"><div class="empty">${q ? `'${esc(state.userQ)}'에 맞는 사용자가 없습니다.` : '사용자가 없습니다.'}</div></td></tr>`}
       </tbody></table></div>`
+    const qIn = $('userQ')
+    qIn.oninput = () => { state.userQ = qIn.value; const at = qIn.selectionStart; panelUsers(); const n = $('userQ'); n.focus(); try { n.setSelectionRange(at, at) } catch (_) {} }
+    if ($('userQClear')) $('userQClear').onclick = () => { state.userQ = ''; panelUsers(); $('userQ').focus() }
     $('panel').querySelectorAll('[data-pwreset]').forEach((b) => {
       b.onclick = async () => {
         const uid = b.dataset.pwreset
