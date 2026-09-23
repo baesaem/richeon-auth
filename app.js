@@ -264,19 +264,26 @@
     })
   }
 
+  // 비밀번호를 확인하기 전(또는 취소했을 때)에는 화면에 남은 남의 자료를 지운다
+  function clearUserView(uid) {
+    state.user = null
+    if (uid) ss.set('user_' + uid, null)
+    const body = $('userBody'); if (body) body.innerHTML = ''
+  }
+
   async function loadUser(quiet) {
     const uid = ($('uid') ? $('uid').value : state.uid).trim(); if ($('uidErr')) $('uidErr').textContent = ''
     if (!uid) return ($('uidErr').textContent = '사용자 ID를 입력하세요.')
-    if (uid !== state.uid) state.pw = pwFor(uid)   // 다른 ID면 저장해 둔 비밀번호로 바꿔 쓴다
-    // 같은 ID의 지난 자료가 있으면 먼저 보여 주고, 서버 자료가 오면 바꿔 그린다
-    const cached = !quiet && ss.get('user_' + uid)
+    if (uid !== state.uid) { state.pw = pwFor(uid); clearUserView() }   // 다른 ID면 앞 사람 화면을 지우고 저장해 둔 비밀번호로 바꿔 쓴다
+    // 지난 자료를 먼저 보여 주는 건 이 브라우저에 비밀번호가 저장돼 있을 때만 (남의 ID를 넣고 지난 화면을 엿볼 수 없게)
+    const cached = !quiet && state.pw && ss.get('user_' + uid)
     if (cached && !(state.user && state.user.userId === uid)) { state.user = cached; state.uid = uid; renderUserBody(); refreshing(true) }
     for (let i = 0; i < 4; i++) {
       try {
         const d = await call('getUserData', [uid, state.pw])
         if (d.hasPassword === false) {   // 아직 비밀번호가 없는 ID — 먼저 정해야 한다
           if (quiet) return
-          refreshing(false)
+          refreshing(false); clearUserView(uid)
           if (!(await askNewPassword(uid))) { if ($('uidErr')) $('uidErr').textContent = '비밀번호를 정해야 내 정보를 볼 수 있습니다.'; return }
           continue
         }
@@ -285,7 +292,7 @@
         refreshing(false)
         if (e.code === 'pw_required' || e.code === 'pw_bad') {
           if (quiet) return
-          savePw(uid, null, false)
+          savePw(uid, null, false); clearUserView(uid)
           if (!(await askPassword(uid, e.code === 'pw_bad' ? '비밀번호가 맞지 않습니다. 다시 입력하세요.' : ''))) return
           continue
         }
