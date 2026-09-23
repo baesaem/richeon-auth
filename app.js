@@ -148,7 +148,7 @@
         <p>구입하신 리천 앱을 정식판으로 쓰려면 사용자 ID로 인증번호를 받아 앱에 입력하세요. 인증번호 하나로 <b>여러 기기</b>에서 쓸 수 있고, 사용 중인 기기는 여기서 확인·해제합니다.</p>
         <div class="must-read" id="guideNote" ${state.guide === '' ? 'style="display:none"' : ''}><span class="grow">📢 인증번호를 신청하기 전에 <b>먼저 [📋 발급 신청 안내]를 꼭 읽어 보세요.</b></span><button class="btn sm gold" id="guideBtn">📋 발급 신청 안내 읽기</button></div>
         <div class="steps">
-          <div class="step"><b>STEP 1</b>사용자 ID 확인 → 앱 등록 신청(입금자 정보)</div>
+          <div class="step"><b>STEP 1</b>사용자 ID 확인 → 앱 인증 신청(입금자 정보)</div>
           <div class="step"><b>STEP 2</b>관리자 승인 후 인증번호 받기</div>
           <div class="step"><b>STEP 3</b>앱의 [정식판으로 전환]에 ID와 번호 입력</div>
         </div>
@@ -165,7 +165,7 @@
       let t = state.guide
       if (t == null) { try { t = await loadGuide() } catch (e) { return toast(e.message, 'err') } }
       if (!t) return toast('등록된 발급 신청 안내가 없습니다.')
-      openGuide(t, $('newApp') ? () => openRegister($('newApp').value) : null)  // 앱 등록 신청 칸이 있으면 바로 신청으로
+      openGuide(t, $('newApp') ? () => openRegister($('newApp').value) : null)  // 앱 인증 신청 칸이 있으면 바로 신청으로
     })
     loadGuide().catch(() => {})  // 첫 화면에서 미리 받아 두기(지난 값이 있으면 그걸 먼저 씀)
     if (state.user && state.user.userId === uid) renderUserBody()
@@ -204,23 +204,23 @@
     const preApp = state.preApp; state.preApp = ''
     if ('applyGuide' in u) setGuide(u.applyGuide)
     const guide = state.guide || ''
-    // 2·3·4번 구역은 아래로 길게 늘어놓지 않고 탭으로 (앱 등록 신청 · 소유 앱 · 관리자에게 메시지)
-    const tabs = [['register', '앱 등록 신청'], ['apps', '소유 앱(인증된 기기관리)'], ['msgs', '관리자에게 메시지']]
+    // 2·3·4번 구역은 아래로 길게 늘어놓지 않고 탭으로 (앱 인증 신청 · 소유 앱 · 관리자에게 메시지)
+    const tabs = [['register', '앱 인증 신청'], ['apps', '소유 앱(인증된 기기관리)'], ['msgs', '관리자에게 메시지']]
     if (preApp) state.utab = regById[preApp] ? 'apps' : 'register'
     if (!tabs.some(([k]) => k === state.utab)) state.utab = regs.length || !others.length ? 'apps' : 'register'
     const panel = {
-      register: () => `<p class="sub">구입한 앱을 골라 등록 신청하세요.${guide ? ' 신청 전에 위의 <b>[📋 발급 신청 안내]</b>를 꼭 읽어 주세요.' : ''} 관리자가 확인한 뒤 승인하면 <b>소유 앱</b> 탭에서 인증번호를 받을 수 있습니다.</p>
-        ${others.length ? `<div class="row"><select class="input grow" id="newApp">${others.map((a) => `<option value="${esc(a.appId)}" ${a.appId === preApp ? 'selected' : ''}>${esc(a.appName)}</option>`).join('')}</select><button class="btn primary" id="newAppGo">등록 신청</button></div>`
+      register: () => `<p class="sub">구입한 앱을 골라 인증 신청하세요.${guide ? ' 신청 전에 위의 <b>[📋 발급 신청 안내]</b>를 꼭 읽어 주세요.' : ''} 관리자가 확인한 뒤 승인하면 <b>소유 앱</b> 탭에서 인증번호를 받을 수 있습니다.</p>
+        ${others.length ? `<div class="row"><select class="input grow" id="newApp">${others.map((a) => `<option value="${esc(a.appId)}" ${a.appId === preApp ? 'selected' : ''}>${esc(a.appName)}</option>`).join('')}</select><button class="btn primary" id="newAppGo">인증 신청</button></div>`
           : `<div class="empty">신청할 수 있는 앱이 남아 있지 않습니다. 이미 모든 앱을 신청하셨습니다. <b>소유 앱</b> 탭에서 상태와 인증번호를 확인하세요.</div>`}`,
       msgs: () => `<p class="sub">입금 안내, 기기 추가 요청 등을 남기면 관리자가 답장합니다.</p>
         <div class="thread" id="thread">${threadHtml(u.messages)}</div>
         <div class="row" style="margin-top:10px"><input class="input grow" id="msgIn" placeholder="메시지 입력"><button class="btn" id="msgGo">보내기</button></div>`,
       apps: () => `<div class="row between" style="flex-wrap:nowrap;align-items:flex-start;gap:10px"><p class="sub grow" style="margin:0 0 10px">앱마다 상태와 사용 중인 기기를 보여 줍니다. 승인된 앱은 [인증번호 받기]를 누르세요.</p><button class="ghost sm" id="reload" style="flex:none">새로고침</button></div>
-        ${regs.length ? `<div class="apps">${regs.map(appCard).join('')}</div>` : `<div class="empty">아직 등록한 앱이 없습니다. ${others.length ? "<b>앱 등록 신청</b> 탭에서 구입한 앱을 신청하세요." : '신청할 수 있는 앱이 없습니다.'}</div>`}`,
+        ${regs.length ? `<div class="apps">${regs.map(appCard).join('')}</div>` : `<div class="empty">아직 등록한 앱이 없습니다. ${others.length ? "<b>앱 인증 신청</b> 탭에서 구입한 앱을 신청하세요." : '신청할 수 있는 앱이 없습니다.'}</div>`}`,
     }
     $('userBody').innerHTML = `
       <section class="card fade" id="userTabs">
-        <div class="tabs">${tabs.map(([k, l], i) => `<button class="tab ${state.utab === k ? 'active' : ''}" data-utab="${k}"><span class="tn">${i + 2}</span>${l}${k === 'apps' ? ` <span class="chip">${esc(u.userId)}</span>` : ''}</button>`).join('')}</div>
+        <div class="tabs">${tabs.map(([k, l], i) => `<button class="tab ${state.utab === k ? 'active' : ''}" data-utab="${k}"><span class="tn">${i + 2}</span>${l}</button>`).join('')}</div>
         <div id="upanel">${panel[state.utab]()}</div>
       </section>
       <section class="card fade" id="codeCard" style="display:none"></section>`
@@ -246,7 +246,7 @@
     const cls = n >= max ? 'full' : pct >= 67 ? 'warn' : ''
     let action = ''
     if (r.status === 'approved') action = `<button class="btn gold" data-act="code" data-app="${esc(r.appId)}">인증번호 받기</button>`
-    else if (r.status === 'revoked') action = `<button class="btn" data-act="register" data-app="${esc(r.appId)}">다시 등록 신청</button>`
+    else if (r.status === 'revoked') action = `<button class="btn" data-act="register" data-app="${esc(r.appId)}">다시 인증 신청</button>`
     else action = `<span class="notice warn small">⏳ 관리자 확인을 기다리고 있습니다. 승인되면 여기서 인증번호를 받을 수 있습니다.</span>`
     return `<div class="app">
       <div class="row between"><div class="name">${esc(app.appName)}</div>${badge(r.status)}</div>
@@ -297,7 +297,7 @@
   function openGuide(text, onApply) {
     const acct = guideAccount(text)
     modal(`<h3>📋 발급 신청 안내</h3>${guideHtml(text)}
-      <div class="row" style="justify-content:flex-end;margin-top:14px">${acct ? '<button class="btn sm" id="gCopy">계좌번호 복사</button>' : ''}<button class="btn sm" id="gClose">닫기</button>${onApply ? '<button class="btn sm primary" id="gApply">등록 신청하기</button>' : ''}</div>`)
+      <div class="row" style="justify-content:flex-end;margin-top:14px">${acct ? '<button class="btn sm" id="gCopy">계좌번호 복사</button>' : ''}<button class="btn sm" id="gClose">닫기</button>${onApply ? '<button class="btn sm primary" id="gApply">인증 신청하기</button>' : ''}</div>`)
     bindCopyAccount($('gCopy'), text)
     $('gClose').onclick = closeModal
     if (onApply) $('gApply').onclick = () => { closeModal(); onApply() }
@@ -306,14 +306,14 @@
   function openRegister(appId) {
     const app = state.user.apps.find((a) => a.appId === appId) || { appName: appId }
     const guide = state.guide != null ? state.guide : (state.user.applyGuide || '')
-    modal(`<h3>등록 신청 — ${esc(app.appName)}</h3>
+    modal(`<h3>인증 신청 — ${esc(app.appName)}</h3>
       ${guide ? `<div class="row between" style="margin-top:6px"><span class="tiny muted" style="font-weight:700">발급 신청 안내</span>${guideAccount(guide) ? '<button class="ghost xs" id="rCopy">계좌번호 복사</button>' : ''}</div>${guideHtml(guide, true)}` : ''}
       <p class="small muted" style="margin:${guide ? '12px' : '0'} 0 6px">구입 정보를 입력하면 관리자가 확인한 뒤 승인합니다. 승인 후 인증번호를 받을 수 있습니다.</p>
       <label class="f">구입처</label><div class="seg" id="src"><button data-v="blog" class="active">블로그(무통장 입금)</button><button data-v="online">온라인 구매</button></div>
       <label class="f">입금자 명 / 온라인 아이디</label><input class="input" id="rName" placeholder="사용자 ID와 같으면 비워 두세요">
       <label class="f">메시지(선택)</label><textarea class="input" id="rMsg" placeholder="관리자에게 전할 말"></textarea>
       <div class="field-err" id="rErr"></div>
-      <div class="row" style="justify-content:flex-end;margin-top:14px"><button class="btn sm" id="rCancel">취소</button><button class="btn sm primary" id="rGo">등록 신청</button></div>`)
+      <div class="row" style="justify-content:flex-end;margin-top:14px"><button class="btn sm" id="rCancel">취소</button><button class="btn sm primary" id="rGo">인증 신청</button></div>`)
     bindCopyAccount($('rCopy'), guide)
     let src = 'blog'
     $('src').querySelectorAll('button').forEach((b) => { b.onclick = () => { src = b.dataset.v; $('src').querySelectorAll('button').forEach((x) => x.classList.toggle('active', x === b)) } })
@@ -537,7 +537,7 @@
       ${num('maxCopies', '인증번호 발급 횟수', c.maxCopies, '이 횟수를 넘으면 관리자 재승인이 필요합니다.')}
       ${num('maxApprovals', '사용자당 총 승인 횟수', c.maxApprovals, '이 횟수를 넘으면 더 승인할 수 없습니다.')}
       ${hasGuide ? `<h3 style="margin:22px 0 4px;font-size:.98rem">발급 신청 안내글</h3>
-      <p class="help" style="margin:0 0 8px">사용자 화면의 <b>[📋 발급 신청 안내]</b> 단추와 등록 신청 창에 그대로 보입니다. 줄바꿈은 그대로 나오고, <b>**강조할 글**</b>처럼 별표 두 개로 감싸면 강조됩니다. '계좌'나 '은행'이 들어간 줄은 자동으로 강조되며 그 줄의 계좌번호는 사용자가 복사할 수 있습니다. 비우고 저장하면 안내를 숨깁니다.</p>
+      <p class="help" style="margin:0 0 8px">사용자 화면의 <b>[📋 발급 신청 안내]</b> 단추와 인증 신청 창에 그대로 보입니다. 줄바꿈은 그대로 나오고, <b>**강조할 글**</b>처럼 별표 두 개로 감싸면 강조됩니다. '계좌'나 '은행'이 들어간 줄은 자동으로 강조되며 그 줄의 계좌번호는 사용자가 복사할 수 있습니다. 비우고 저장하면 안내를 숨깁니다.</p>
       <textarea class="input" id="gText" rows="12" maxlength="5000" placeholder="예: 후원 금액, 입금자명 쓰는 법, 후원 계좌…">${esc(d.applyGuide || '')}</textarea>
       <div class="row" style="margin-top:8px"><button class="btn sm primary" id="gGo">안내글 저장</button><button class="btn sm" id="gPrev">미리보기</button><span class="tiny muted right" id="gLen"></span></div>` : ''}
       <h3 style="margin:22px 0 4px;font-size:.98rem">알림 · 주소</h3>
