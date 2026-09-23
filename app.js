@@ -9,7 +9,7 @@
   const STATUS = { approved: '승인됨', pending: '승인 대기', needs_reapproval: '재승인 필요', revoked: '취소됨', none: '미등록' }
   const badge = (s) => `<span class="badge ${esc(s || 'none')}">${esc(STATUS[s] || s || '미등록')}</span>`
   const SRC = { blog: '블로그(무통장)', online: '온라인', admin: '관리자' }
-  const LS = { theme: 'richeon_auth_theme', api: 'richeon_auth_api', token: 'richeon_auth_admin_token', uid: 'richeon_auth_last_uid' }
+  const LS = { theme: 'richeon_auth_theme', api: 'richeon_auth_api', token: 'richeon_auth_admin_token', uid: 'richeon_auth_last_uid', pw: 'richeon_auth_pw' }
   const ls = { get: (k) => { try { return localStorage.getItem(k) } catch (_) { return null } }, set: (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v) } catch (_) {} } }
 
   // ── API ───────────────────────────────────────────────────
@@ -69,7 +69,7 @@
   $('footVer').textContent = `인증 센터 ${CFG.siteVersion || ''}` + (API !== CFG.api ? ' · 시험 서버' : '')
 
   // ── 상태 · 라우팅 ────────────────────────────────────────
-  const state = { route: 'user', key: '', token: ls.get(LS.token), uid: '', user: null, admin: null, tab: 'regs', filter: 'all', appFilter: 'all', msgUser: '', guide: null, guideP: null, utab: '' }
+  const state = { route: 'user', key: '', token: ls.get(LS.token), uid: '', user: null, admin: null, tab: 'regs', filter: 'all', appFilter: 'all', msgUser: '', guide: null, guideP: null, utab: '', pw: null }
   function parseRoute() {
     const h = location.hash.replace(/^#\/?/, '')
     const [path, q] = h.split('?')
@@ -154,7 +154,7 @@
         </div>
       </section>
       <section class="card fade" id="idCard">
-        <h2><span class="n">1</span>사용자 ID</h2><p class="sub">구입(입금자명)할 때 쓴 사용자 ID(아이디)를 입력하세요. 처음이면 원하는 ID를 정해 입력하면 됩니다.</p>
+        <h2><span class="n">1</span>사용자 ID</h2><p class="sub">구입(입금자명)할 때 쓴 사용자 ID(아이디)를 입력하세요. 처음이면 비번 입력(6자리 이상) 정해 입력하세요.</p>
         <div class="row"><input class="input grow" id="uid" placeholder="예: hong123" value="${esc(uid)}" autocomplete="username"><button class="btn primary" id="uidGo">확인</button></div>
         <div class="field-err" id="uidErr"></div>
       </section>
@@ -183,14 +183,116 @@
     return state.guide
   }
 
+  // ── 사용자 비밀번호(6~12자리) ─────────────────────────────
+  const pwFor = (uid) => ss.get('pw_' + uid) || ls.get(LS.pw + '_' + uid) || null
+  const savePw = (uid, pw, keep) => { ss.set('pw_' + uid, pw || null); ls.set(LS.pw + '_' + uid, pw && keep ? pw : null) }
+  const pwKeepBox = '<label class="row small" style="margin:12px 0"><input type="checkbox" id="pwKeep" checked> 이 브라우저에서 기억</label>'
+
+  function askNewPassword(uid) {  // 처음 온 사용자(또는 관리자가 초기화한 사용자)가 비밀번호를 정한다
+    return new Promise((res) => {
+      modal(`<h3>🔒 비밀번호 만들기</h3><p class="small muted" style="margin:4px 0 0">사용자 ID <b>${esc(uid)}</b>의 신청 내용·인증번호·기기 목록을 지킬 비밀번호를 정하세요. 다음부터 이 ID로 들어올 때 필요합니다.</p>
+        <label class="f">새 비밀번호 (6~12자리)</label><input class="input" id="pw1" type="password" maxlength="12" autocomplete="new-password">
+        <label class="f">비밀번호 확인</label><input class="input" id="pw2" type="password" maxlength="12" autocomplete="new-password">
+        ${pwKeepBox}
+        <div class="notice warn small">⚠ 비밀번호를 잊으면 관리자에게 초기화를 요청해야 합니다.</div>
+        <div class="field-err" id="pwErr"></div>
+        <div class="row" style="justify-content:flex-end;margin-top:14px"><button class="btn sm" id="pwCancel">취소</button><button class="btn sm primary" id="pwGo">만들기</button></div>`)
+      const done = (v) => { closeModal(); res(v) }
+      $('pwCancel').onclick = () => done(false)
+      $('pw2').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) $('pwGo').click() })
+      $('pwGo').onclick = () => busy($('pwGo'), async () => {
+        const a = $('pw1').value.trim(), b = $('pw2').value.trim()
+        $('pwErr').textContent = ''
+        if (a.length < 6 || a.length > 12) return ($('pwErr').textContent = '비밀번호는 6~12자리로 정하세요.')
+        if (a !== b) return ($('pwErr').textContent = '두 번 입력한 비밀번호가 다릅니다.')
+        try { await call('setUserPassword', [uid, a]); state.pw = a; savePw(uid, a, $('pwKeep').checked); toast('비밀번호를 만들었습니다.', 'ok'); done(true) }
+        catch (e) { $('pwErr').textContent = e.message }
+      })
+    })
+  }
+  function askPassword(uid, msg) {  // 이미 비밀번호가 있는 사용자
+    return new Promise((res) => {
+      modal(`<h3>🔒 비밀번호 입력</h3><p class="small muted" style="margin:4px 0 0">사용자 ID <b>${esc(uid)}</b>의 비밀번호를 입력하세요.</p>
+        ${msg ? `<div class="notice warn small" style="margin-top:10px">${esc(msg)}</div>` : ''}
+        <label class="f">비밀번호</label><input class="input" id="pwIn" type="password" maxlength="12" autocomplete="current-password">
+        ${pwKeepBox}
+        <div class="field-err" id="pwErr"></div>
+        <div class="row between" style="margin-top:14px"><button class="ghost sm" id="pwForgot">비밀번호를 잊으셨나요?</button>
+          <span class="row"><button class="btn sm" id="pwCancel">취소</button><button class="btn sm primary" id="pwGo">확인</button></span></div>`)
+      const done = (v) => { closeModal(); res(v) }
+      $('pwCancel').onclick = () => done(false)
+      $('pwForgot').onclick = () => { closeModal(); openPwReset(uid).then(() => res(false)) }
+      $('pwIn').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) $('pwGo').click() })
+      $('pwGo').onclick = () => {
+        const v = $('pwIn').value.trim()
+        if (!v) return ($('pwErr').textContent = '비밀번호를 입력하세요.')
+        state.pw = v; savePw(uid, v, $('pwKeep').checked); done(true)
+      }
+    })
+  }
+  function openPwReset(uid) {  // 비밀번호 분실 → 관리자에게 초기화 요청
+    return new Promise((res) => {
+      modal(`<h3>비밀번호 초기화 요청</h3><p class="small muted" style="margin:4px 0 12px">관리자가 확인한 뒤 초기화해 드립니다. 초기화되면 이 ID로 다시 들어와 새 비밀번호를 정하면 됩니다.</p>
+        <label class="f">관리자에게 전할 말(선택)</label><textarea class="input" id="prMsg" placeholder="예: 입금자명 홍길동, 학사일정 앱 사용자입니다"></textarea>
+        <div class="field-err" id="prErr"></div>
+        <div class="row" style="justify-content:flex-end;margin-top:14px"><button class="btn sm" id="prCancel">닫기</button><button class="btn sm primary" id="prGo">요청 보내기</button></div>`)
+      const done = () => { closeModal(); res() }
+      $('prCancel').onclick = done
+      $('prGo').onclick = () => busy($('prGo'), async () => {
+        try { await call('requestPasswordReset', [uid, $('prMsg').value.trim()]); toast('초기화를 요청했습니다. 관리자가 처리하면 새 비밀번호를 정할 수 있습니다.', 'ok'); done() }
+        catch (e) { $('prErr').textContent = e.message }
+      })
+    })
+  }
+  function openPwChange() {
+    const uid = state.uid
+    modal(`<h3>비밀번호 바꾸기</h3><p class="small muted" style="margin:4px 0 0">사용자 ID <b>${esc(uid)}</b></p>
+      <label class="f">현재 비밀번호</label><input class="input" id="pc0" type="password" maxlength="12" autocomplete="current-password">
+      <label class="f">새 비밀번호 (6~12자리)</label><input class="input" id="pc1" type="password" maxlength="12" autocomplete="new-password">
+      <label class="f">새 비밀번호 확인</label><input class="input" id="pc2" type="password" maxlength="12" autocomplete="new-password">
+      <div class="field-err" id="pcErr"></div>
+      <div class="row" style="justify-content:flex-end;margin-top:14px"><button class="btn sm" id="pcCancel">취소</button><button class="btn sm primary" id="pcGo">바꾸기</button></div>`)
+    $('pc0').value = state.pw || ''
+    $('pcCancel').onclick = closeModal
+    $('pcGo').onclick = () => busy($('pcGo'), async () => {
+      const a = $('pc1').value.trim(), b = $('pc2').value.trim()
+      $('pcErr').textContent = ''
+      if (a.length < 6 || a.length > 12) return ($('pcErr').textContent = '새 비밀번호는 6~12자리로 정하세요.')
+      if (a !== b) return ($('pcErr').textContent = '두 번 입력한 새 비밀번호가 다릅니다.')
+      try { await call('changeUserPassword', [uid, $('pc0').value.trim(), a]); state.pw = a; savePw(uid, a, true); closeModal(); toast('비밀번호를 바꿨습니다.', 'ok') }
+      catch (e) { $('pcErr').textContent = e.message }
+    })
+  }
+
   async function loadUser(quiet) {
     const uid = ($('uid') ? $('uid').value : state.uid).trim(); if ($('uidErr')) $('uidErr').textContent = ''
     if (!uid) return ($('uidErr').textContent = '사용자 ID를 입력하세요.')
+    if (uid !== state.uid) state.pw = pwFor(uid)   // 다른 ID면 저장해 둔 비밀번호로 바꿔 쓴다
     // 같은 ID의 지난 자료가 있으면 먼저 보여 주고, 서버 자료가 오면 바꿔 그린다
     const cached = !quiet && ss.get('user_' + uid)
     if (cached && !(state.user && state.user.userId === uid)) { state.user = cached; state.uid = uid; renderUserBody(); refreshing(true) }
-    try { const d = await call('getUserData', [uid]); state.user = d; state.uid = uid; ls.set(LS.uid, uid); ss.set('user_' + uid, d); refreshing(false); renderUserBody() }
-    catch (e) { refreshing(false); if ($('uidErr')) $('uidErr').textContent = e.message; else toast(e.message, 'err') }
+    for (let i = 0; i < 4; i++) {
+      try {
+        const d = await call('getUserData', [uid, state.pw])
+        if (d.hasPassword === false) {   // 아직 비밀번호가 없는 ID — 먼저 정해야 한다
+          if (quiet) return
+          refreshing(false)
+          if (!(await askNewPassword(uid))) { if ($('uidErr')) $('uidErr').textContent = '비밀번호를 정해야 내 정보를 볼 수 있습니다.'; return }
+          continue
+        }
+        state.user = d; state.uid = uid; ls.set(LS.uid, uid); ss.set('user_' + uid, d); refreshing(false); renderUserBody(); return
+      } catch (e) {
+        refreshing(false)
+        if (e.code === 'pw_required' || e.code === 'pw_bad') {
+          if (quiet) return
+          savePw(uid, null, false)
+          if (!(await askPassword(uid, e.code === 'pw_bad' ? '비밀번호가 맞지 않습니다. 다시 입력하세요.' : ''))) return
+          continue
+        }
+        if ($('uidErr')) $('uidErr').textContent = e.message; else toast(e.message, 'err')
+        return
+      }
+    }
   }
   // 사용자 동작 뒤: 화면 자료를 바로 고쳐 그리고 서버 자료는 뒤에서 새로 고침
   function userPatch(f) { try { f(state.user) } catch (_) {} renderUserBody(); refreshing(true); loadUser(true).catch(() => refreshing(false)) }
@@ -215,7 +317,7 @@
       msgs: () => `<p class="sub">입금 안내, 기기 추가 요청 등을 남기면 관리자가 답장합니다.</p>
         <div class="thread" id="thread">${threadHtml(u.messages)}</div>
         <div class="row" style="margin-top:10px"><input class="input grow" id="msgIn" placeholder="메시지 입력"><button class="btn" id="msgGo">보내기</button></div>`,
-      apps: () => `<div class="row between" style="flex-wrap:nowrap;align-items:flex-start;gap:10px"><p class="sub grow" style="margin:0 0 10px">앱마다 상태와 사용 중인 기기를 보여 줍니다. 승인된 앱은 [인증번호 받기]를 누르세요.</p><button class="ghost sm" id="reload" style="flex:none">새로고침</button></div>
+      apps: () => `<div class="row between" style="flex-wrap:nowrap;align-items:flex-start;gap:10px"><p class="sub grow" style="margin:0 0 10px">앱마다 상태와 사용 중인 기기를 보여 줍니다. 승인된 앱은 [인증번호 받기]를 누르세요.</p><span class="row" style="flex:none;gap:6px"><button class="ghost sm" id="pwChange" title="이 ID의 비밀번호 바꾸기">🔒 비밀번호</button><button class="ghost sm" id="reload">새로고침</button></span></div>
         ${regs.length ? `<div class="apps">${regs.map(appCard).join('')}</div>` : `<div class="empty">아직 등록한 앱이 없습니다. ${others.length ? "<b>앱 인증 신청</b> 탭에서 구입한 앱을 신청하세요." : '신청할 수 있는 앱이 없습니다.'}</div>`}`,
     }
     $('userBody').innerHTML = `
@@ -226,12 +328,13 @@
       <section class="card fade" id="codeCard" style="display:none"></section>`
     document.querySelectorAll('[data-utab]').forEach((b) => { b.onclick = () => { state.utab = b.dataset.utab; renderCounts() } })  // 인증번호 카드는 그대로 두고 다시 그림
     if ($('reload')) $('reload').onclick = () => busy($('reload'), loadUser)
+    if ($('pwChange')) $('pwChange').onclick = openPwChange
     if ($('newAppGo')) $('newAppGo').onclick = () => openRegister($('newApp').value)
     if ($('msgGo')) {
       $('msgIn').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) $('msgGo').click() })
       $('msgGo').onclick = () => busy($('msgGo'), async () => {
         const m = $('msgIn').value.trim(); if (!m) return
-        try { const r = await call('addMessage', [u.userId, m]); toast('보냈습니다.', 'ok'); userPatch((d) => { d.messages.push({ id: r.id, userId: u.userId, message: m, createdAt: r.createdAt, isAdminReply: false }) }) } catch (e) { toast(e.message, 'err') }
+        try { const r = await call('addMessage', [u.userId, m, state.pw]); toast('보냈습니다.', 'ok'); userPatch((d) => { d.messages.push({ id: r.id, userId: u.userId, message: m, createdAt: r.createdAt, isAdminReply: false }) }) } catch (e) { toast(e.message, 'err') }
       })
     }
     document.querySelectorAll('[data-act]').forEach((b) => { b.onclick = () => userAction(b.dataset.act, b.dataset.app, b.dataset.dev, b) })
@@ -264,13 +367,13 @@
     if (act === 'register') return openRegister(appId)
     if (act === 'release') {
       if (!(await confirmBox('기기 해제', '이 기기에서는 앱이 다시 체험판으로 돌아가며, 다시 인증하면 다시 등록됩니다.', '해제', true))) return
-      try { await call('releaseUserDevice', [u.userId, devId]); toast('해제했습니다.', 'ok'); userPatch((d) => { for (const r of d.registrations) r.devices = (r.devices || []).filter((x) => x.id !== devId) }) } catch (e) { toast(e.message, 'err') }
+      try { await call('releaseUserDevice', [u.userId, devId, state.pw]); toast('해제했습니다.', 'ok'); userPatch((d) => { for (const r of d.registrations) r.devices = (r.devices || []).filter((x) => x.id !== devId) }) } catch (e) { toast(e.message, 'err') }
       return
     }
     if (act === 'code') {
       await busy(btn, async () => {
         try {
-          const r = await call('getAuthCode', [u.userId, appId])
+          const r = await call('getAuthCode', [u.userId, appId, state.pw])
           if (!r.success) { toast(r.error, 'err'); await loadUser(); return }
           const app = u.apps.find((a) => a.appId === appId) || {}
           // 인증에 쓸 수 있는 기기가 이미 가득 찼으면 안내하고 '소유 앱'(기기 관리)으로 갈 수 있게
@@ -284,7 +387,7 @@
             <div class="row" style="margin-top:12px"><button class="btn primary" id="cpCode">📋 인증번호 복사</button>${app.appUrl ? `<a class="btn" href="${esc(app.appUrl)}" target="_blank" rel="noopener">앱 열기 ↗</a>` : ''}<span class="tiny muted">기기 ${maxDev || ''}대까지 같은 번호로 인증할 수 있습니다.</span></div>`
           bindCodeCard()
           card.scrollIntoView({ behavior: 'smooth', block: 'center' })
-          const regs = await call('getUserData', [u.userId]); state.user = regs; renderCounts()
+          const regs = await call('getUserData', [u.userId, state.pw]); state.user = regs; renderCounts()
         } catch (e) { toast(e.message, 'err') }
       })
     }
@@ -332,7 +435,7 @@
     $('rGo').onclick = () => busy($('rGo'), async () => {
       const name = $('rName').value.trim(), msg = $('rMsg').value.trim()
       try {
-        const r = await call('requestRegistration', [state.user.userId, appId, src, name, msg]); closeModal(); toast('신청했습니다. 관리자 승인 후 인증번호를 받을 수 있습니다.', 'ok')
+        const r = await call('requestRegistration', [state.user.userId, appId, src, name, msg, state.pw]); closeModal(); toast('신청했습니다. 관리자 승인 후 인증번호를 받을 수 있습니다.', 'ok')
         state.utab = 'apps'  // 신청한 앱의 상태를 바로 볼 수 있게 '소유 앱' 탭으로
         userPatch((d) => {
           const ex = d.registrations.find((x) => x.appId === appId)
@@ -387,6 +490,7 @@
   function renderDash() {
     document.body.classList.add('admin') // 관리자 표가 넓어 화면을 넓게 쓴다
     const d = state.admin, s = d.stats
+    const resetCount = (d.users || []).filter((u) => u.resetRequested).length   // 비밀번호 초기화 요청
     $('app').innerHTML = `
       <div class="row between fade" style="margin-bottom:14px"><div><h1 style="margin:0;font-size:1.35rem">관리자 대시보드</h1><div class="tiny muted">서버 v${esc(d.serverVersion)} · ${d.spreadsheetUrl ? `<a href="${esc(d.spreadsheetUrl)}" target="_blank" rel="noopener">데이터 시트 열기 ↗</a>` : ''}</div></div>
         <div class="row"><a class="btn sm" href="${esc(location.origin + location.pathname)}#/" target="_blank" rel="noopener">👤 사용자 앱 열기 ↗</a><button class="ghost sm" id="aReload">새로고침</button><button class="ghost sm" id="aOut">로그아웃</button></div></div>
@@ -400,14 +504,14 @@
         <div class="stat ${d.unread.count ? 'hot' : ''}" id="stUnread"><b style="${d.unread.count ? 'color:var(--danger)' : ''}">${d.unread.count}</b><span>새 메시지</span></div>
       </div>
       <section class="card fade">
-        <div class="tabs">${[['regs', '등록 관리'], ['apps', '앱 관리'], ['devices', '기기'], ['msgs', '메시지'], ['settings', '설정']].map(([k, l]) => `<button class="tab ${state.tab === k ? 'active' : ''}" data-tab="${k}">${l}${k === 'msgs' && d.unread.count ? `<span class="cnt">${d.unread.count}</span>` : ''}</button>`).join('')}</div>
+        <div class="tabs">${[['regs', '등록 관리'], ['apps', '앱 관리'], ['devices', '기기'], ['users', '사용자'], ['msgs', '메시지'], ['settings', '설정']].map(([k, l]) => `<button class="tab ${state.tab === k ? 'active' : ''}" data-tab="${k}">${l}${k === 'msgs' && d.unread.count ? `<span class="cnt">${d.unread.count}</span>` : ''}${k === 'users' && resetCount ? `<span class="cnt">${resetCount}</span>` : ''}</button>`).join('')}</div>
         <div id="panel"></div>
       </section>`
     $('aReload').onclick = () => busy($('aReload'), async () => { await loadAdmin(); renderDash() })
     $('aOut').onclick = async () => { try { await admin('adminLogout') } catch (_) {} state.token = null; ls.set(LS.token, null); renderLogin() }
     $('stUnread').onclick = () => { state.tab = 'msgs'; renderDash() }
     document.querySelectorAll('.tab').forEach((t) => { t.onclick = () => { state.tab = t.dataset.tab; renderDash() } })
-    ;({ regs: panelRegs, apps: panelApps, devices: panelDevices, msgs: panelMsgs, settings: panelSettings })[state.tab]()
+    ;({ regs: panelRegs, apps: panelApps, devices: panelDevices, users: panelUsers, msgs: panelMsgs, settings: panelSettings })[state.tab]()
     watchTables()
   }
   // 표가 화면보다 넓어 가로로 밀려 있으면 오른쪽 단추 칸에 그림자를 준다(아직 더 있다는 표시)
@@ -519,6 +623,30 @@
       ${list.length ? list.map((x) => `<tr><td class="mono" style="font-weight:700">${esc(x.userId)}</td><td>${esc(appName(x.appId))}</td><td>${esc(x.deviceName || '이름 없음')} <span class="tiny muted mono">#${esc(x.deviceId.slice(-6))}</span></td><td class="small">${esc(x.platform)}</td><td class="tiny">${esc(x.appVersion)}</td><td class="tiny muted">${fmt(x.firstSeen)}</td><td class="tiny muted">${fmtT(x.lastSeen)}</td><td><button class="btn xs danger" data-r="${esc(x.id)}">해제</button></td></tr>`).join('') : '<tr><td colspan="8"><div class="empty">등록된 기기가 없습니다.</div></td></tr>'}
       </tbody></table></div>`
     $('panel').querySelectorAll('[data-r]').forEach((b) => { b.onclick = async () => { if (await confirmBox('기기 해제', '이 기기의 앱은 체험판으로 돌아갑니다. 사용자가 다시 인증하면 다시 등록됩니다.', '해제', true)) act(b, () => admin('adminRemoveDevice', b.dataset.r), '해제했습니다.', P.dropDevice(b.dataset.r)) } })
+  }
+
+  function panelUsers() {
+    const d = state.admin
+    const byId = {}
+    ;(d.users || []).forEach((u) => { byId[u.userId] = { ...u } })
+    d.registrations.forEach((r) => { byId[r.userId] = byId[r.userId] || { userId: r.userId, hasPassword: false, resetRequested: false } })  // 비밀번호를 아직 안 만든 예전 사용자도 보여 준다
+    const list = Object.values(byId).sort((a, b) => (b.resetRequested ? 1 : 0) - (a.resetRequested ? 1 : 0) || a.userId.localeCompare(b.userId))
+    const cnt = (u, arr) => arr.filter((x) => x.userId === u.userId).length
+    $('panel').innerHTML = `<p class="small muted" style="margin:0 0 12px">사용자가 인증 센터에서 정한 비밀번호(6~12자리)입니다. 비밀번호를 잊어 <b>초기화 요청</b>이 오면, 본인이 맞는지 확인한 뒤 [초기화]를 누르세요. 사용자는 다음에 들어올 때 새 비밀번호를 정합니다.</p>
+      <div class="tbl-wrap"><table class="tbl"><thead><tr><th>사용자 ID</th><th>비밀번호</th><th>등록 앱</th><th>기기</th><th>마지막 변경</th><th></th></tr></thead><tbody>
+      ${list.length ? list.map((u) => `<tr>
+        <td class="mono" style="font-weight:700">${esc(u.userId)}</td>
+        <td>${u.resetRequested ? '<span class="badge pending">초기화 요청</span>' : u.hasPassword ? '<span class="badge approved">설정됨</span>' : '<span class="badge none">없음</span>'}</td>
+        <td>${cnt(u, d.registrations)}</td><td>${cnt(u, d.devices)}</td><td class="tiny muted">${u.updatedAt ? fmtT(u.updatedAt) : '—'}</td>
+        <td>${u.hasPassword || u.resetRequested ? `<button class="btn xs danger" data-pwreset="${esc(u.userId)}">초기화</button>` : '<span class="tiny muted">—</span>'}</td></tr>`).join('') : '<tr><td colspan="6"><div class="empty">사용자가 없습니다.</div></td></tr>'}
+      </tbody></table></div>`
+    $('panel').querySelectorAll('[data-pwreset]').forEach((b) => {
+      b.onclick = async () => {
+        const uid = b.dataset.pwreset
+        if (!(await confirmBox('비밀번호 초기화', `<b>${esc(uid)}</b> 님의 비밀번호를 지웁니다. 그 사용자는 다음에 들어올 때 새 비밀번호를 정하게 되고, 메시지로도 알려 줍니다.`, '초기화', true))) return
+        act(b, () => admin('resetUserPassword', uid), '초기화했습니다.', (r, dd) => { const x = (dd.users || []).find((z) => z.userId === uid); if (x) { x.hasPassword = false; x.resetRequested = false } })
+      }
+    })
   }
 
   function panelMsgs() {
