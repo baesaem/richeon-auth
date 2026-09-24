@@ -206,6 +206,9 @@ details.adv summary { cursor: pointer; color: var(--text-2); font-size: .86rem; 
   .kv { grid-template-columns: 1fr; }
   .top { padding: 10px 14px; }
   .brand small { display: none; }
+  /* 사용자 ID 줄: 폰에서는 아이디 칸이 한 줄 전체, 그 아래 비밀번호 + 확인 (비밀번호 칸의 고정 폭 200px 때문에 아이디 칸이 쪼그라들던 문제) */
+  #idCard #uid { flex: 1 1 100%; }
+  #idCard #pwField { flex: 1 1 0 !important; width: auto !important; min-width: 0; }
 }
 .refreshing { position: fixed; right: 16px; bottom: 16px; z-index: 30; display: none; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 10px; background: var(--bg-2); border: 1px solid var(--line); color: var(--text-3); font-size: .78rem; box-shadow: var(--shadow); }
 .refreshing.show { display: inline-flex; }
